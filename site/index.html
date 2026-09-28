@@ -3,36 +3,165 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DersTakipCO</title>
+  <title>DersTakipCO – Ücretsiz Ders Takip Uygulaması</title>
+  <meta name="description" content="Özel ders veren öğretmenler için ücretsiz ders, öğrenci ve kazanç takip uygulaması. İnternet gerektirmez. Windows için tek tıkla kurulum.">
+  <meta property="og:title" content="DersTakipCO – Ücretsiz İndir">
+  <meta property="og:description" content="Öğretmenler için ders, öğrenci ve kazanç takibi. Tek tıkla kurulur, internet gerektirmez.">
+  <meta property="og:image" content="https://ozcinax-star.github.io/DersTakipCO/icon.png">
+  <meta property="og:url" content="https://ozcinax-star.github.io/DersTakipCO/">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="icon.png">
   <style>
-    :root { --fg: #1e293b; --muted: #475569; --accent: #ea580c; --bg: #f8fafc; --card: #ffffff; --line: #e2e8f0; }
-    @media (prefers-color-scheme: dark) { :root { --fg: #e2e8f0; --muted: #94a3b8; --bg: #0f172a; --card: #1e293b; --line: #334155; } }
-    body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; line-height: 1.6; }
-    main { max-width: 760px; margin: 0 auto; padding: 48px 16px; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 32px; }
-    h1 { color: var(--accent); margin: 0 0 8px; font-size: 2.2rem; }
-    p, li { color: var(--muted); }
-    a.button { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 10px 18px; border-radius: 10px; font-weight: 600; margin: 8px 8px 0 0; }
-    a { color: var(--accent); }
-    footer { margin-top: 24px; font-size: .9rem; color: var(--muted); }
+    :root {
+      --bg: #fff7ed; --card: #ffffff; --fg: #1e293b; --muted: #475569; --line: #fed7aa;
+      --accent: #ea580c; --accent-dark: #c2410c; --soft: #ffedd5; --ok: #15803d;
+      --ss-blue: #0b3a6f; --ss-text: #ffffff; --ss-muted: #cfe0f5;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1c1917; --card: #292524; --fg: #fafaf9; --muted: #d6d3d1; --line: #44403c; --soft: #3b2a1e; --ok: #4ade80; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Segoe UI", system-ui, -apple-system, sans-serif; line-height: 1.6; font-size: 17px; }
+    main { max-width: 820px; margin: 0 auto; padding: 32px 16px 64px; }
+    .hero { text-align: center; padding: 24px 0 8px; }
+    .hero img { width: 88px; height: 88px; border-radius: 22px; box-shadow: 0 10px 30px rgba(234,88,12,.25); }
+    h1 { font-size: 2.4rem; margin: 16px 0 4px; color: var(--accent); letter-spacing: -.5px; }
+    .tagline { font-size: 1.15rem; color: var(--muted); margin: 0 0 28px; }
+    .download { display: inline-flex; align-items: center; gap: 12px; background: var(--accent); color: #fff; text-decoration: none; font-size: 1.35rem; font-weight: 700; padding: 18px 36px; border-radius: 16px; box-shadow: 0 10px 24px rgba(234,88,12,.35); transition: transform .1s, background .2s; }
+    .download:hover { background: var(--accent-dark); transform: translateY(-2px); }
+    .download svg { width: 28px; height: 28px; }
+    .meta { color: var(--muted); font-size: .95rem; margin-top: 12px; }
+    .notice { display: none; margin: 16px auto 0; max-width: 520px; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; font-size: .95rem; }
+    .features { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 28px 0 8px; padding: 0; list-style: none; }
+    .features li { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: .92rem; color: var(--muted); }
+    section { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 28px; margin-top: 28px; }
+    h2 { margin: 0 0 20px; font-size: 1.5rem; }
+    .step { display: grid; grid-template-columns: 48px 1fr; gap: 16px; padding: 18px 0; border-top: 1px dashed var(--line); }
+    .step:first-of-type { border-top: 0; padding-top: 0; }
+    .num { width: 48px; height: 48px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 800; font-size: 1.3rem; display: flex; align-items: center; justify-content: center; }
+    .step h3 { margin: 8px 0 4px; font-size: 1.15rem; }
+    .step p { margin: 4px 0; color: var(--muted); }
+    .tip { background: var(--soft); border-radius: 10px; padding: 10px 14px; margin-top: 10px; font-size: .95rem; }
+    .tip b { color: var(--fg); }
+    /* Windows uyarısının temsili çizimi */
+    .ss-row { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; align-items: stretch; }
+    .ss { flex: 1 1 260px; background: var(--ss-blue); color: var(--ss-text); border-radius: 8px; padding: 18px 18px 14px; font-size: .88rem; position: relative; min-height: 190px; display: flex; flex-direction: column; }
+    .ss .t { font-size: 1.25rem; font-weight: 600; margin-bottom: 8px; }
+    .ss p { color: var(--ss-muted); margin: 0 0 8px; }
+    .ss .link { color: #fff; text-decoration: underline; font-weight: 600; }
+    .ss .btns { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
+    .ss .btn { border: 1px solid #9fb9d9; padding: 5px 14px; color: #fff; }
+    .ss .hl { outline: 3px solid #facc15; outline-offset: 3px; border-radius: 3px; animation: pulse 1.6s ease-in-out infinite; }
+    .ss .tag { position: absolute; top: -12px; left: 12px; background: #facc15; color: #1e293b; font-weight: 700; font-size: .78rem; padding: 2px 10px; border-radius: 999px; }
+    .caption { font-size: .8rem; color: var(--muted); margin-top: 8px; }
+    @keyframes pulse { 50% { outline-color: rgba(250,204,21,.35); } }
+    @media (prefers-reduced-motion: reduce) { .ss .hl { animation: none; } }
+    .done { display: flex; gap: 12px; align-items: flex-start; color: var(--ok); font-weight: 600; }
+    details { border-top: 1px solid var(--line); padding: 12px 0; }
+    details:first-of-type { border-top: 0; }
+    summary { cursor: pointer; font-weight: 600; }
+    details p { color: var(--muted); margin: 8px 0 0; }
+    footer { text-align: center; color: var(--muted); font-size: .9rem; margin-top: 36px; }
+    footer a, section a { color: var(--accent); }
+    @media (max-width: 520px) { h1 { font-size: 2rem; } .download { width: 100%; justify-content: center; padding: 16px; } section { padding: 20px; } }
   </style>
 </head>
 <body>
 <main>
-  <div class="card">
+  <div class="hero">
+    <img src="icon.png" alt="DersTakipCO simgesi">
     <h1>DersTakipCO</h1>
-    <p>Özel ders veren öğretmenler için internet gerektirmeyen ders, öğrenci ve kazanç takip uygulaması (Windows).</p>
-    <ul>
-      <li>Ders oluşturma, takvim ve ders listesi</li>
-      <li>Öğrenci ve veli kartları</li>
-      <li>Akıllı haftalık planlama, gelir hedefleri ve performans skorları</li>
-      <li>Raporlar ve finans grafikleri</li>
-      <li>Otomatik yedekleme; isteğe bağlı Google Drive ile bilgisayarlar arası aktarım</li>
+    <p class="tagline">Özel ders veren öğretmenler için ücretsiz ders, öğrenci ve kazanç takibi</p>
+    <a class="download" id="indir" href="https://github.com/ozcinax-star/DersTakipCO/releases/latest/download/DersTakipCO-Kurulum.exe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+      Ücretsiz İndir
+    </a>
+    <div class="meta">Windows 10 ve 11 için · Tek tıkla kurulur · İnternet gerektirmez</div>
+    <div class="notice" id="windows-disi">Bu uygulama <b>Windows bilgisayarlar</b> içindir. Lütfen bu sayfayı bilgisayarınızdan açın.</div>
+    <ul class="features">
+      <li>📅 Ders takvimi</li><li>👩‍🎓 Öğrenci ve veli kartları</li><li>💰 Kazanç ve ödeme takibi</li>
+      <li>📊 Raporlar</li><li>💾 Otomatik yedek</li><li>☁️ Google Drive ile taşıma</li>
     </ul>
-    <a class="button" href="https://github.com/ozcinax-star/DersTakipCO/releases/latest">İndir</a>
-    <a class="button" href="gizlilik.html">Gizlilik Politikası</a>
-    <footer>© 2025-2026 Çınar Öz · <a href="mailto:cinar@cinaroz.com.tr">cinar@cinaroz.com.tr</a></footer>
   </div>
+
+  <section aria-labelledby="kurulum">
+    <h2 id="kurulum">Nasıl kurulur?</h2>
+
+    <div class="step">
+      <div class="num">1</div>
+      <div>
+        <h3>“Ücretsiz İndir” düğmesine basın</h3>
+        <p>Kurulum dosyası (<b>DersTakipCO-Kurulum.exe</b>) bilgisayarınıza iner.</p>
+        <div class="tip"><b>Edge tarayıcısı</b> “yaygın olarak indirilmiyor” derse: dosyanın yanındaki <b>⋯</b> işaretine, sonra <b>Sakla</b>'ya ve <b>Yine de sakla</b>'ya basın.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">2</div>
+      <div>
+        <h3>İnen dosyaya tıklayın</h3>
+        <p>Tarayıcının üst veya alt köşesinde beliren dosyaya tıklayın. Bulamazsanız <b>İndirilenler</b> klasörünü açıp <b>DersTakipCO-Kurulum</b> dosyasına çift tıklayın.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">3</div>
+      <div>
+        <h3>Mavi bir uyarı çıkarsa iki tıkla geçin</h3>
+        <p>DersTakipCO yeni bir uygulama olduğu için Windows bu uyarıyı gösterebilir. Önce <b>Ek bilgi</b>'ye, sonra <b>Yine de çalıştır</b>'a basın.</p>
+        <div class="ss-row" aria-hidden="true">
+          <div class="ss">
+            <span class="tag">1. tıklama</span>
+            <div class="t">Windows bilgisayarınızı korudu</div>
+            <p>Microsoft Defender SmartScreen, tanınmayan bir uygulamanın başlatılmasını engelledi.</p>
+            <p><span class="link hl">Ek bilgi</span></p>
+            <div class="btns"><span class="btn">Çalıştırma</span></div>
+          </div>
+          <div class="ss">
+            <span class="tag">2. tıklama</span>
+            <div class="t">Windows bilgisayarınızı korudu</div>
+            <p>Uygulama: DersTakipCO-Kurulum.exe<br>Yayımcı: Bilinmeyen yayımcı</p>
+            <div class="btns"><span class="btn hl">Yine de çalıştır</span><span class="btn">Çalıştırma</span></div>
+          </div>
+        </div>
+        <div class="caption">Temsili çizimdir; Windows sürümüne göre görünüm biraz farklı olabilir.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">✓</div>
+      <div>
+        <h3>Hepsi bu kadar</h3>
+        <p class="done">Kurulum kendiliğinden tamamlanır ve DersTakipCO açılır.</p>
+        <p>Masaüstünüzde <b>DersTakipCO 3</b> simgesi oluşur; uygulamayı daha sonra oradan açabilirsiniz.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="eski">
+    <h2 id="eski">Eski DersTakipCO'yu mu kullanıyorsunuz?</h2>
+    <p>Microsoft Store'dan kurduğunuz eski DersTakipCO'daki <b>tüm öğrenci, ders ve ödeme bilgileriniz</b>, yeni uygulama ilk açıldığında <b>otomatik olarak aktarılır</b>. Hiçbir şey yapmanıza gerek yok. Aktarım tamamlanana kadar eski uygulamayı silmeyin.</p>
+  </section>
+
+  <section aria-labelledby="sss">
+    <h2 id="sss">Sık sorulan sorular</h2>
+    <details><summary>Ücretli mi?</summary><p>Hayır, DersTakipCO tamamen ücretsizdir.</p></details>
+    <details><summary>İnternet gerekir mi?</summary><p>Hayır. Uygulama internetsiz çalışır. İnternet yalnızca isteğe bağlı Google Drive aktarımı için kullanılır.</p></details>
+    <details><summary>Bilgilerim nerede saklanıyor?</summary><p>Yalnızca kendi bilgisayarınızda. Uygulama her değişiklikten sonra <b>Belgeler → DersTakipCO Yedekler</b> klasörüne otomatik yedek de alır.</p></details>
+    <details><summary>Başka bir bilgisayara nasıl taşırım?</summary><p>Uygulamada <b>Ayarlar → Google Drive ile Aktarım</b> bölümünden Google hesabınıza bağlanıp <b>Drive'a Yükle</b>'ye basın. Yeni bilgisayarda DersTakipCO'yu kurup açılış ekranındaki <b>Google Drive'dan verilerimi çek</b> düğmesini kullanın.</p></details>
+    <details><summary>“Bu uygulama engellendi” yazıyor ve “Yine de çalıştır” düğmesi yok</summary><p>Bazı yeni Windows 11 bilgisayarlarda “Akıllı Uygulama Denetimi” açıktır ve bu uyarıda geçme seçeneği sunmaz. Bu durumda lütfen bizimle iletişime geçin: <a href="mailto:cinar@cinaroz.com.tr">cinar@cinaroz.com.tr</a></p></details>
+    <details><summary>Nasıl kaldırırım?</summary><p>Windows <b>Ayarlar → Uygulamalar</b> bölümünde <b>DersTakipCO 3</b>'ü bulup Kaldır'a basın. Belgeler klasörünüzdeki yedekler silinmez.</p></details>
+  </section>
+
+  <footer>
+    © 2025-2026 Çınar Öz · <a href="gizlilik.html">Gizlilik Politikası</a> · <a href="mailto:cinar@cinaroz.com.tr">İletişim</a> · <a href="https://github.com/ozcinax-star/DersTakipCO/releases/latest">Tüm sürümler</a>
+  </footer>
 </main>
+<script>
+  // Windows dışındaki cihazlarda (telefon, Mac) kullanıcıyı bilgilendir
+  if (!/Windows/i.test(navigator.userAgent)) {
+    document.getElementById('windows-disi').style.display = 'block';
+  }
+</script>
 </body>
 </html>

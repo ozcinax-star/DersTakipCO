@@ -45,20 +45,25 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "artifactName": "${productName}-${version}-${arch}-${name}.${ext}"
+      "artifactName": "${productName}-${arch}.${ext}"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
+      "runAfterFinish": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "DersTakipCO 3",
-      "artifactName": "${productName}-Kurulum-${version}.${ext}",
-      "uninstallDisplayName": "DersTakipCO 3"
+      "uninstallDisplayName": "DersTakipCO 3",
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "tr_TR"
+      ],
+      "language": "1055",
+      "artifactName": "DersTakipCO-Kurulum.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}-Tasinabilir-${version}.${ext}"
+      "artifactName": "DersTakipCO-Tasinabilir.${ext}"
     }
   },
   "dependencies": {
