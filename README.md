@@ -2,12 +2,9 @@
 
 ## İndir
 
-- **Kolay kurulum sayfası:** https://ozcinax-star.github.io/DersTakipCO/
-- **Doğrudan indirme (her zaman en son sürüm):** [DersTakipCO-Kurulum.exe](https://github.com/ozcinax-star/DersTakipCO/releases/latest/download/DersTakipCO-Kurulum.exe)
-- Kurulum gerektirmeyen sürüm: [DersTakipCO-Tasinabilir.exe](https://github.com/ozcinax-star/DersTakipCO/releases/latest/download/DersTakipCO-Tasinabilir.exe)
+**https://ozcinax-star.github.io/DersTakipCO/** — müşterilerle paylaşılacak link budur. Sayfa açılınca hiçbir şey inmez; kullanıcı kurulum adımlarını görür ve **Ücretsiz İndir** düğmesine basınca en son sürüm iner.
 
-Bu linkler her yeni sürümde otomatik olarak en son sürümü indirir. Yeni sürüm yayınlarken dosya adları `DersTakipCO-Kurulum.exe` ve `DersTakipCO-Tasinabilir.exe` olarak kalmalı ve sürüm "Latest" olarak işaretlenmelidir.
-
+> Geliştirici notu: sayfadaki düğme `releases/latest/download/DersTakipCO-Kurulum.exe` adresini kullanır. Bu adres açıldığı anda indirmeyi başlattığı için doğrudan paylaşılmamalıdır. Yeni sürüm yayınlarken dosya adları `DersTakipCO-Kurulum.exe` ve `DersTakipCO-Tasinabilir.exe` olarak kalmalı ve sürüm "Latest" olarak işaretlenmelidir.
 
 Özel ders veren öğretmenler için internet gerektirmeyen ders, öğrenci ve kazanç takip uygulaması (Windows).
 
