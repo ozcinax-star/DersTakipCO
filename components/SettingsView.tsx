@@ -630,7 +630,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </p>
         <div className="mt-4 pt-4 border-t border-slate-200">
           <p className="text-xs text-slate-400">
-            Tüm veriler yalnızca bu bilgisayarda saklanır, internete gönderilmez.
+            Veriler bu bilgisayarda saklanır. Yalnızca Google Drive aktarımını kullanırsanız kendi Drive hesabınıza yüklenir.
           </p>
         </div>
       </div>

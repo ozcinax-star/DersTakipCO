@@ -10,7 +10,7 @@
 - Yedekleme ve geri yükleme, günlük otomatik yedek
 - İsteğe bağlı Google Drive ile bilgisayarlar arası veri aktarımı ([kurulum](docs/GOOGLE_DRIVE_KURULUM.md))
 
-Tüm veriler yalnızca kullanıcının bilgisayarında saklanır, hiçbir sunucuya gönderilmez.
+Veriler kullanıcının bilgisayarında saklanır. Kullanıcı Google Drive aktarımını açıkça kullanırsa, veriler yalnızca kendi Google Drive hesabındaki uygulamaya özel gizli klasöre yüklenir; başka hiçbir sunucuya gönderilmez.
 
 ## Microsoft Store sürümünden geçiş
 
