@@ -9,12 +9,16 @@ const isDev = process.env.NODE_ENV === 'development';
 // Mağaza sürümü %APPDATA%\DersTakipCO klasörünü kullanıyordu. Bağımsız (.exe)
 // sürüm aynı klasörü paylaşmamak için kendi klasöründe çalışır. Bu kod ileride
 // Mağaza paketi olarak yayınlanırsa mevcut Mağaza verisini kullanmaya devam eder.
-if (!process.windowsStore) {
+// DERSTAKIP_USER_DATA / DERSTAKIP_BACKUP_DIR yalnızca otomatik testler içindir; testlerin
+// kurulu uygulamanın verisine, tek örnek kilidine ve Belgeler klasörüne dokunmamasını sağlar.
+if (process.env.DERSTAKIP_USER_DATA) {
+  app.setPath('userData', process.env.DERSTAKIP_USER_DATA);
+} else if (!process.windowsStore) {
   app.setPath('userData', path.join(app.getPath('appData'), 'DersTakipCO-Masaustu'));
 }
 
 const MIGRATION_TEMP = path.join(app.getPath('temp'), 'DersTakipCO-aktarim');
-const AUTO_BACKUP_DIR = path.join(app.getPath('documents'), 'DersTakipCO Yedekler');
+const AUTO_BACKUP_DIR = process.env.DERSTAKIP_BACKUP_DIR || path.join(app.getPath('documents'), 'DersTakipCO Yedekler');
 const AUTO_BACKUP_KEEP = 30;
 
 let mainWindow;
@@ -162,6 +166,11 @@ ipcMain.handle('drive:download', () => drive.download());
 ipcMain.handle('drive:markDownloaded', (_event, summary) => drive.markDownloaded(summary));
 
 ipcMain.handle('backup:save', async (_event, json, suggestedName) => {
+  // Yalnızca otomatik testler: kaydetme penceresi açmadan verilen yola yaz
+  if (process.env.DERSTAKIP_TEST_SAVE_PATH) {
+    fs.writeFileSync(process.env.DERSTAKIP_TEST_SAVE_PATH, json, 'utf-8');
+    return process.env.DERSTAKIP_TEST_SAVE_PATH;
+  }
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: 'Yedeği Kaydet',
     defaultPath: path.join(app.getPath('documents'), suggestedName || 'DersTakipCO-yedek.json'),

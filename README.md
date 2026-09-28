@@ -8,6 +8,7 @@
 - Raporlar ve finans grafikleri
 - Birden fazla öğretmen profili (Kurum Yönetimi)
 - Yedekleme ve geri yükleme, günlük otomatik yedek
+- Dosyayla bilgisayarlar arası taşıma (Verileri İndir → yeni bilgisayarda açılış ekranından "Yedek dosyasından yükle")
 - İsteğe bağlı Google Drive ile bilgisayarlar arası veri aktarımı ([kurulum](docs/GOOGLE_DRIVE_KURULUM.md))
 
 Veriler kullanıcının bilgisayarında saklanır. Kullanıcı Google Drive aktarımını açıkça kullanırsa, veriler yalnızca kendi Google Drive hesabındaki uygulamaya özel gizli klasöre yüklenir; başka hiçbir sunucuya gönderilmez.

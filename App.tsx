@@ -13,6 +13,7 @@ import { ReportsView } from './components/ReportsView';
 import { SettingsView } from './components/SettingsView';
 import { InstitutionView } from './components/InstitutionView';
 import { DrivePullOnboarding } from './components/DrivePullOnboarding';
+import { FileImportOnboarding } from './components/FileImportOnboarding';
 import { formatDateTime } from './services/driveSync';
 import { LayoutDashboard, Users, Calendar, PieChart, LogOut, PlusCircle, List, Plus, Sparkles, Target, FileText, Settings, Building2, CheckCircle, X, Loader2, RefreshCw } from 'lucide-react';
 
@@ -55,6 +56,7 @@ const App: React.FC = () => {
   const [scanMessage, setScanMessage] = useState('');
   const [appVersion, setAppVersion] = useState('');
   const [driveNotice, setDriveNotice] = useState('');
+  const [fileNotice, setFileNotice] = useState('');
 
   // Eski DersTakipCO (Mağaza sürümü) verilerini arar; bulursa aktarır
   const importFromOldApp = async (): Promise<MigrationInfo | null> => {
@@ -233,6 +235,19 @@ const App: React.FC = () => {
             {appVersion && <p className="text-xs text-slate-400 mt-1">v{appVersion}</p>}
           </div>
 
+          {fileNotice && (
+            <div className="flex items-start gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800">
+              <CheckCircle className="flex-shrink-0 mt-0.5" size={20} />
+              <div className="flex-1 text-sm">
+                <p className="font-bold">Yedek dosyasındaki verileriniz yüklendi</p>
+                <p>{fileNotice}</p>
+              </div>
+              <button onClick={() => setFileNotice('')} className="text-emerald-600 hover:text-emerald-800" aria-label="Kapat">
+                <X size={18} />
+              </button>
+            </div>
+          )}
+
           {driveNotice && (
             <div className="flex items-start gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800">
               <CheckCircle className="flex-shrink-0 mt-0.5" size={20} />
@@ -284,9 +299,18 @@ const App: React.FC = () => {
                     </button>
                   )}
                   {scanMessage && <p className="text-slate-400">{scanMessage}</p>}
+                  <FileImportOnboarding
+                    onImported={(_result, summary) => {
+                      setMigrationNotice(null);
+                      setDriveNotice('');
+                      setFileNotice(summary);
+                      refreshData();
+                    }}
+                  />
                   <DrivePullOnboarding
                     onImported={(result, remote) => {
                       setMigrationNotice(null);
+                      setFileNotice('');
                       setDriveNotice(`${result.teachers} profil, ${result.students} öğrenci, ${result.lessons} ders ${remote.device ? `"${remote.device}" bilgisayarından ` : ''}${formatDateTime(remote.uploadedAt)} tarihinde yüklenen kopyadan alındı.`);
                       refreshData();
                     }}

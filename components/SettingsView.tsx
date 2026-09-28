@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Teacher, Student, Lesson, Group, BackupData, FullBackupData, EducationLevel } from '../types';
 import { dbService, MigrationInfo, RestoreResult } from '../services/db';
 import { DriveSyncCard } from './DriveSyncCard';
+import { readBackupFile, describeBackup, snapshotBeforeRestore } from '../services/backupFile';
 import { Settings, Download, Upload, Shield, Trash2, AlertTriangle, CheckCircle, Database, HardDrive, DollarSign, Save, History, RefreshCw } from 'lucide-react';
 
 // Varsayılan ücret ayarları için storage key
@@ -126,45 +127,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  // Yedek dosyasını oku ve onaya sun (yeni tam yedek ve eski tek profilli yedek desteklenir)
-  const handleRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Yedek dosyasını oku ve onaya sun (tam yedek, otomatik yedek, Drive kopyası ve eski tek profilli yedek)
+  const handleRestore = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = '';
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string) as BackupData | FullBackupData;
-        let summary: string;
-        if ('teachers' in data && Array.isArray(data.teachers) && Array.isArray(data.students) && Array.isArray(data.lessons)) {
-          summary = `${data.teachers.length} profil, ${data.students.length} öğrenci, ${data.lessons.length} ders. Bu bilgisayardaki TÜM profillerin verileri yedektekilerle değiştirilecek.`;
-        } else if ('teacher' in data && data.teacher && Array.isArray(data.students) && Array.isArray(data.lessons)) {
-          summary = `"${data.teacher.name}" profili: ${data.students.length} öğrenci, ${data.lessons.length} ders. Bu profilin mevcut verileri yedektekilerle değiştirilecek; diğer profillere dokunulmaz.`;
-        } else {
-          throw new Error('Geçersiz yedek dosyası');
-        }
-        setPendingRestore({ data, summary });
-        setRestoreStatus('idle');
-      } catch {
-        showStatus('error', 'Yedek dosyası okunamadı. Geçerli bir DersTakipCO yedek dosyası seçtiğinizden emin olun.');
-      }
-    };
-    reader.readAsText(file);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    try {
+      const parsed = await readBackupFile(file);
+      const effect = parsed.kind === 'full'
+        ? 'Bu bilgisayardaki TÜM profillerin verileri yedektekilerle değiştirilecek.'
+        : 'Bu profilin mevcut verileri yedektekilerle değiştirilecek; diğer profillere dokunulmaz.';
+      setPendingRestore({ data: parsed.data, summary: `${describeBackup(parsed)} ${effect} Değiştirmeden önce mevcut verilerin kopyası Yedekler klasörüne kaydedilir.` });
+      setRestoreStatus('idle');
+    } catch (err) {
+      showStatus('error', err instanceof Error ? err.message : 'Yedek dosyası okunamadı.');
     }
   };
 
-  const confirmRestore = () => {
+  const confirmRestore = async () => {
     if (!pendingRestore) return;
+    const current = pendingRestore;
+    setPendingRestore(null);
     try {
-      const result = onRestoreBackup(pendingRestore.data);
+      await snapshotBeforeRestore('dosya-oncesi');
+      const result = onRestoreBackup(current.data);
       showStatus('success', `Yedek başarıyla geri yüklendi! (${result.teachers} profil, ${result.students} öğrenci, ${result.lessons} ders)`);
     } catch {
       showStatus('error', 'Yedek geri yüklenemedi. Dosya bozuk olabilir.');
-    } finally {
-      setPendingRestore(null);
     }
   };
 
@@ -422,7 +412,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
           <HardDrive className="w-5 h-5 text-orange-500" />
-          Yedekleme & Geri Yükleme
+          Dosyayla Yedekleme ve Taşıma
         </h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -433,16 +423,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <Download className="w-6 h-6 text-emerald-600" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-slate-800">Yedek Oluştur</h3>
+                <h3 className="font-semibold text-slate-800">Verileri Dosyaya İndir</h3>
                 <p className="text-sm text-slate-500 mt-1 mb-4">
-                  Tüm profillerin verilerini tek bir dosyaya kaydedin. Bilgisayarınızda güvenli bir yerde saklayın.
+                  Tüm profilleri tek bir dosyaya kaydedin. Bu dosyayı USB bellek, e-posta veya WhatsApp ile başka bir bilgisayara taşıyabilirsiniz.
                 </p>
                 <button
                   onClick={createBackup}
                   className="w-full flex items-center justify-center gap-2 bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  Yedek İndir
+                  Verileri İndir
                 </button>
               </div>
             </div>
@@ -455,9 +445,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <Upload className="w-6 h-6 text-blue-600" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-slate-800">Yedek Geri Yükle</h3>
+                <h3 className="font-semibold text-slate-800">Dosyadan Verileri Yükle</h3>
                 <p className="text-sm text-slate-500 mt-1 mb-4">
-                  Daha önce aldığınız bir yedek dosyasını yükleyin. Eski sürümün yedekleri de desteklenir.
+                  DersTakipCO'dan indirilmiş bir dosyayı seçin. Eski sürümün yedekleri ve Belgeler\DersTakipCO Yedekler klasöründeki otomatik yedekler de açılabilir.
                 </p>
                 <input
                   ref={fileInputRef}
@@ -472,11 +462,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   className="w-full flex items-center justify-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors cursor-pointer"
                 >
                   <Upload className="w-4 h-4" />
-                  Yedek Yükle
+                  Dosya Seç ve Yükle
                 </label>
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200 text-sm text-slate-600">
+          <p className="font-medium text-slate-800 mb-1">Başka bir bilgisayara taşımak için</p>
+          <ol className="list-decimal list-inside space-y-0.5">
+            <li>Bu bilgisayarda <b>Verileri İndir</b>'e basın ve dosyayı kaydedin.</li>
+            <li>Dosyayı USB bellek, e-posta veya WhatsApp ile yeni bilgisayara aktarın.</li>
+            <li>Yeni bilgisayarda DersTakipCO'yu kurup açılış ekranındaki <b>Yedek dosyasından yükle</b> düğmesine basın.</li>
+          </ol>
         </div>
 
         {pendingRestore && (
