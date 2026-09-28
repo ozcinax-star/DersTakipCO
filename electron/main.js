@@ -1,5 +1,17 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+const fs = require('fs');
 const path = require('path');
+const { scanOldAppData } = require('./migration');
+
+const isDev = process.env.NODE_ENV === 'development';
+
+// Mağaza sürümü %APPDATA%\DersTakipCO klasörünü kullanıyordu. Aynı klasörü
+// paylaşmamak için yeni sürüm kendi klasöründe çalışır.
+app.setPath('userData', path.join(app.getPath('appData'), 'DersTakipCO-Masaustu'));
+
+const MIGRATION_TEMP = path.join(app.getPath('temp'), 'DersTakipCO-aktarim');
+const AUTO_BACKUP_DIR = path.join(app.getPath('documents'), 'DersTakipCO Yedekler');
+const AUTO_BACKUP_KEEP = 30;
 
 let mainWindow;
 
@@ -7,50 +19,56 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    minWidth: 1200,
+    minWidth: 1100,
     minHeight: 700,
     icon: path.join(__dirname, '../assets/icon.ico'),
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false,
-      devTools: process.env.NODE_ENV === 'development'
+      sandbox: true,
+      devTools: isDev,
     },
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f8fafc',
     show: false,
-    title: 'DersTakipCO'
+    title: 'DersTakipCO',
   });
 
-  // Production'da dist klasöründen, development'ta dev server'dan yükle
-  if (process.env.NODE_ENV === 'development') {
+  if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // Pencere hazır olduğunda göster
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
   });
 
-  // Menüyü kaldır (opsiyonel, basit görünüm için)
-  // Menu.setApplicationMenu(null);
+  // Uygulama içinden dış bağlantı açılırsa varsayılan tarayıcıya yönlendir
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith('file://') && !url.startsWith('http://localhost:3000')) event.preventDefault();
+  });
 
-  // Özel menü oluştur
   const menuTemplate = [
     {
       label: 'Dosya',
       submenu: [
         {
-          label: 'Çıkış',
-          accelerator: 'Alt+F4',
+          label: 'Yedek Klasörünü Aç',
           click: () => {
-            app.quit();
-          }
-        }
-      ]
+            fs.mkdirSync(AUTO_BACKUP_DIR, { recursive: true });
+            shell.openPath(AUTO_BACKUP_DIR);
+          },
+        },
+        { type: 'separator' },
+        { label: 'Çıkış', accelerator: 'Alt+F4', click: () => app.quit() },
+      ],
     },
     {
       label: 'Görünüm',
@@ -60,8 +78,8 @@ function createWindow() {
         { type: 'separator' },
         { role: 'zoomin', label: 'Yakınlaştır' },
         { role: 'zoomout', label: 'Uzaklaştır' },
-        { role: 'resetzoom', label: 'Zoom Sıfırla' }
-      ]
+        { role: 'resetzoom', label: 'Yakınlaştırmayı Sıfırla' },
+      ],
     },
     {
       label: 'Yardım',
@@ -69,57 +87,70 @@ function createWindow() {
         {
           label: 'Hakkında',
           click: () => {
-            const { dialog } = require('electron');
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'DersTakipCO Hakkında',
-              message: 'DersTakipCO v2.1.0',
-              detail: 'Özel ders takip uygulaması\n\n© 2025 Çınar Öz\nTüm hakları saklıdır.',
-              buttons: ['Tamam']
+              message: `DersTakipCO v${app.getVersion()}`,
+              detail: 'Özel ders takip uygulaması\n\n© 2025-2026 Çınar Öz\nTüm hakları saklıdır.\n\nDestek: oz.cinar@hotmail.com',
+              buttons: ['Tamam'],
             });
-          }
-        }
-      ]
-    }
+          },
+        },
+      ],
+    },
   ];
 
-  // Sadece development modunda DevTools menüsü ekle
-  if (process.env.NODE_ENV === 'development') {
+  if (isDev) {
     menuTemplate.push({
       label: 'Geliştirici',
-      submenu: [
-        { role: 'toggledevtools', label: 'Geliştirici Araçları' }
-      ]
+      submenu: [{ role: 'toggledevtools', label: 'Geliştirici Araçları' }],
     });
   }
 
-  const menu = Menu.buildFromTemplate(menuTemplate);
-  Menu.setApplicationMenu(menu);
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-// Uygulama hazır olduğunda pencereyi oluştur
-app.whenReady().then(() => {
-  createWindow();
+// ============ IPC ============
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
+ipcMain.handle('app:version', () => app.getVersion());
+
+ipcMain.handle('migration:scan', async () => {
+  fs.mkdirSync(MIGRATION_TEMP, { recursive: true });
+  return scanOldAppData(MIGRATION_TEMP);
 });
 
-// Tüm pencereler kapatıldığında uygulamayı kapat (macOS hariç)
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
+ipcMain.handle('backup:auto', async (_event, json) => {
+  if (typeof json !== 'string' || json.length === 0) return false;
+  fs.mkdirSync(AUTO_BACKUP_DIR, { recursive: true });
+  const day = new Date().toISOString().slice(0, 10);
+  fs.writeFileSync(path.join(AUTO_BACKUP_DIR, `otomatik-yedek-${day}.json`), json, 'utf-8');
+
+  const autoFiles = fs.readdirSync(AUTO_BACKUP_DIR)
+    .filter(f => /^otomatik-yedek-\d{4}-\d{2}-\d{2}\.json$/.test(f))
+    .sort();
+  for (const old of autoFiles.slice(0, Math.max(0, autoFiles.length - AUTO_BACKUP_KEEP))) {
+    fs.rmSync(path.join(AUTO_BACKUP_DIR, old), { force: true });
   }
+  return true;
 });
 
-// Tek örnek kontrolü (opsiyonel)
+ipcMain.handle('backup:save', async (_event, json, suggestedName) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Yedeği Kaydet',
+    defaultPath: path.join(app.getPath('documents'), suggestedName || 'DersTakipCO-yedek.json'),
+    filters: [{ name: 'DersTakipCO Yedek', extensions: ['json'] }],
+  });
+  if (canceled || !filePath) return null;
+  fs.writeFileSync(filePath, json, 'utf-8');
+  return filePath;
+});
+
+// ============ UYGULAMA YAŞAM DÖNGÜSÜ ============
+
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
@@ -130,5 +161,19 @@ if (!gotTheLock) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
+  });
+
+  app.whenReady().then(() => {
+    // Önceki aktarımlardan kalan geçici kopyaları temizle
+    fs.rmSync(MIGRATION_TEMP, { recursive: true, force: true });
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
   });
 }

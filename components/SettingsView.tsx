@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Teacher, Student, Lesson, Group, BackupData, EducationLevel, EducationLevelLabels } from '../types';
-import { Settings, Download, Upload, Shield, Trash2, AlertTriangle, CheckCircle, Database, HardDrive, DollarSign, Save } from 'lucide-react';
+import { Teacher, Student, Lesson, Group, BackupData, FullBackupData, EducationLevel } from '../types';
+import { dbService, MigrationInfo, RestoreResult } from '../services/db';
+import { Settings, Download, Upload, Shield, Trash2, AlertTriangle, CheckCircle, Database, HardDrive, DollarSign, Save, History, RefreshCw } from 'lucide-react';
 
 // Varsayılan ücret ayarları için storage key
 const PRICING_STORAGE_KEY = 'derstakipco_default_pricing';
@@ -41,9 +42,16 @@ interface SettingsViewProps {
   students: Student[];
   lessons: Lesson[];
   groups: Group[];
-  onRestoreBackup: (data: BackupData) => void;
+  onRestoreBackup: (data: BackupData | FullBackupData) => RestoreResult;
   onClearAllData: () => void;
+  onImportFromOldApp?: () => Promise<MigrationInfo | null>;
 }
+
+// Yerel tarihe göre YYYY-MM-DD (toISOString UTC'ye çevirip gün kaydırabilir)
+const localDateStamp = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   teacher,
@@ -51,12 +59,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   lessons,
   groups,
   onRestoreBackup,
-  onClearAllData
+  onClearAllData,
+  onImportFromOldApp
 }) => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [restoreStatus, setRestoreStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingRestore, setPendingRestore] = useState<{ data: BackupData | FullBackupData; summary: string } | null>(null);
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
+  const migrationInfo = dbService.getMigrationInfo();
+
+  useEffect(() => {
+    window.derstakip?.getVersion().then(setAppVersion).catch(() => undefined);
+  }, []);
+
+  const showStatus = (status: 'success' | 'error', message: string) => {
+    setRestoreStatus(status);
+    setStatusMessage(message);
+    if (status === 'success') setTimeout(() => setRestoreStatus('idle'), 5000);
+  };
   
   // Ücret ayarları state
   const [pricing, setPricing] = useState<DefaultPricing>(getDefaultPricing());
@@ -74,33 +98,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }, 3000);
   };
 
-  // Yedek oluştur
-  const createBackup = () => {
-    const backupData: BackupData = {
-      version: '2.0.0',
-      createdAt: new Date().toISOString(),
-      teacher,
-      students,
-      lessons,
-      groups
-    };
+  // Yedek oluştur: tüm profilleri içeren tam yedek
+  const createBackup = async () => {
+    const json = JSON.stringify(dbService.exportAll(), null, 2);
+    const fileName = `DersTakipCO_Yedek_${localDateStamp()}.json`;
 
-    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `DersTakipCO_Yedek_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      if (window.derstakip?.saveBackup) {
+        const savedPath = await window.derstakip.saveBackup(json, fileName);
+        if (savedPath) showStatus('success', `Yedek kaydedildi: ${savedPath}`);
+        return;
+      }
 
-    setRestoreStatus('success');
-    setStatusMessage('Yedek başarıyla indirildi!');
-    setTimeout(() => setRestoreStatus('idle'), 3000);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showStatus('success', 'Yedek başarıyla indirildi!');
+    } catch {
+      showStatus('error', 'Yedek kaydedilemedi. Lütfen tekrar deneyin.');
+    }
   };
 
-  // Yedek geri yükle
+  // Yedek dosyasını oku ve onaya sun (yeni tam yedek ve eski tek profilli yedek desteklenir)
   const handleRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -108,26 +133,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const data = JSON.parse(e.target?.result as string) as BackupData;
-        
-        // Veri doğrulama
-        if (!data.version || !data.teacher || !data.students || !data.lessons) {
+        const data = JSON.parse(e.target?.result as string) as BackupData | FullBackupData;
+        let summary: string;
+        if ('teachers' in data && Array.isArray(data.teachers) && Array.isArray(data.students) && Array.isArray(data.lessons)) {
+          summary = `${data.teachers.length} profil, ${data.students.length} öğrenci, ${data.lessons.length} ders. Bu bilgisayardaki TÜM profillerin verileri yedektekilerle değiştirilecek.`;
+        } else if ('teacher' in data && data.teacher && Array.isArray(data.students) && Array.isArray(data.lessons)) {
+          summary = `"${data.teacher.name}" profili: ${data.students.length} öğrenci, ${data.lessons.length} ders. Bu profilin mevcut verileri yedektekilerle değiştirilecek; diğer profillere dokunulmaz.`;
+        } else {
           throw new Error('Geçersiz yedek dosyası');
         }
-
-        onRestoreBackup(data);
-        setRestoreStatus('success');
-        setStatusMessage(`Yedek başarıyla geri yüklendi! (${data.students.length} öğrenci, ${data.lessons.length} ders)`);
-      } catch (error) {
-        setRestoreStatus('error');
-        setStatusMessage('Yedek dosyası okunamadı. Geçerli bir DersTakipCO yedek dosyası seçtiğinizden emin olun.');
+        setPendingRestore({ data, summary });
+        setRestoreStatus('idle');
+      } catch {
+        showStatus('error', 'Yedek dosyası okunamadı. Geçerli bir DersTakipCO yedek dosyası seçtiğinizden emin olun.');
       }
     };
     reader.readAsText(file);
-    
-    // Input'u sıfırla
+
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const confirmRestore = () => {
+    if (!pendingRestore) return;
+    try {
+      const result = onRestoreBackup(pendingRestore.data);
+      showStatus('success', `Yedek başarıyla geri yüklendi! (${result.teachers} profil, ${result.students} öğrenci, ${result.lessons} ders)`);
+    } catch {
+      showStatus('error', 'Yedek geri yüklenemedi. Dosya bozuk olabilir.');
+    } finally {
+      setPendingRestore(null);
+    }
+  };
+
+  // Eski uygulamadan verileri yeniden aktar
+  const handleImportOld = async () => {
+    if (!onImportFromOldApp) return;
+    setIsImporting(true);
+    try {
+      const info = await onImportFromOldApp();
+      if (!info) showStatus('error', 'Bu bilgisayarda eski DersTakipCO verisi bulunamadı.');
+    } catch {
+      showStatus('error', 'Eski veriler okunurken bir hata oluştu.');
+    } finally {
+      setIsImporting(false);
+      setShowImportConfirm(false);
     }
   };
 
@@ -135,9 +186,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleClearAll = () => {
     onClearAllData();
     setShowClearConfirm(false);
-    setRestoreStatus('success');
-    setStatusMessage('Tüm veriler silindi. Uygulama sıfırlandı.');
-    setTimeout(() => setRestoreStatus('idle'), 3000);
+    showStatus('success', 'Bu profile ait tüm öğrenci, ders ve grup verileri silindi.');
   };
 
   // İstatistikler
@@ -298,7 +347,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Üniversite */}
           <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
             <label className="block text-sm font-medium text-emerald-800 mb-2">
-              ðŸ›ï¸ Ãœniversite
+              🏛️ Üniversite
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">₺</span>
@@ -385,7 +434,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex-1">
                 <h3 className="font-semibold text-slate-800">Yedek Oluştur</h3>
                 <p className="text-sm text-slate-500 mt-1 mb-4">
-                  Tüm verilerinizi JSON formatında indirin. Bilgisayarınızda güvenli bir yerde saklayın.
+                  Tüm profillerin verilerini tek bir dosyaya kaydedin. Bilgisayarınızda güvenli bir yerde saklayın.
                 </p>
                 <button
                   onClick={createBackup}
@@ -407,7 +456,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex-1">
                 <h3 className="font-semibold text-slate-800">Yedek Geri Yükle</h3>
                 <p className="text-sm text-slate-500 mt-1 mb-4">
-                  Daha önce oluşturduğunuz bir yedek dosyasını yükleyin. Mevcut veriler değiştirilecek.
+                  Daha önce aldığınız bir yedek dosyasını yükleyin. Eski sürümün yedekleri de desteklenir.
                 </p>
                 <input
                   ref={fileInputRef}
@@ -429,6 +478,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
+        {pendingRestore && (
+          <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
+            <p className="text-blue-800 font-medium">Yedek geri yüklensin mi?</p>
+            <p className="text-sm text-blue-700">{pendingRestore.summary}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={confirmRestore}
+                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                Evet, Geri Yükle
+              </button>
+              <button
+                onClick={() => setPendingRestore(null)}
+                className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Backup Tips */}
         <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
           <div className="flex items-start gap-2">
@@ -440,11 +511,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <li>• Yedek dosyalarını farklı konumlarda saklayın (bulut, harici disk)</li>
                 <li>• Yedek dosyası şifresiz JSON formatındadır, güvenli yerde saklayın</li>
                 <li>• Geri yükleme mevcut tüm verilerin üzerine yazar</li>
+                <li>• Uygulama her değişiklikten sonra Belgeler klasöründeki "DersTakipCO Yedekler" klasörüne otomatik yedek alır (son 30 gün)</li>
               </ul>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Eski uygulamadan aktarım */}
+      {onImportFromOldApp && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <History className="w-5 h-5 text-orange-500" />
+            Eski DersTakipCO Verileri
+          </h2>
+          <p className="text-sm text-slate-500 mb-4">
+            {migrationInfo && migrationInfo.source !== 'yok'
+              ? `Verileriniz ${new Date(migrationInfo.date).toLocaleString('tr-TR')} tarihinde önceki DersTakipCO uygulamasından aktarıldı (${migrationInfo.counts.students} öğrenci, ${migrationInfo.counts.lessons} ders).`
+              : "Microsoft Store'dan kurulan önceki DersTakipCO uygulamasındaki verileri bu uygulamaya aktarabilirsiniz."}
+          </p>
+          {!showImportConfirm ? (
+            <button
+              onClick={() => setShowImportConfirm(true)}
+              className="flex items-center gap-2 bg-slate-100 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-200 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Eski Uygulamadan Tekrar Aktar
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-amber-700 text-sm font-medium">
+                ⚠️ Bu işlem bu uygulamadaki tüm profillerin verilerini eski uygulamadaki verilerle değiştirir. Devam etmeden önce yedek almanız önerilir.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleImportOld}
+                  disabled={isImporting}
+                  className="flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isImporting ? 'animate-spin' : ''}`} />
+                  {isImporting ? 'Aktarılıyor...' : 'Evet, Aktar'}
+                </button>
+                <button
+                  onClick={() => setShowImportConfirm(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors"
+                >
+                  İptal
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Danger Zone */}
       <div className="bg-white rounded-xl border border-red-200 p-6">
@@ -461,7 +579,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="flex-1">
               <h3 className="font-semibold text-red-800">Tüm Verileri Sil</h3>
               <p className="text-sm text-red-600 mt-1 mb-4">
-                Bu işlem tüm öğrenci, ders ve grup bilgilerinizi kalıcı olarak siler. Bu işlem geri alınamaz!
+                Bu işlem bu profile ait tüm öğrenci, ders ve grup bilgilerini kalıcı olarak siler. Bu işlem geri alınamaz!
               </p>
               
               {!showClearConfirm ? (
@@ -475,7 +593,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               ) : (
                 <div className="space-y-3">
                   <p className="text-red-700 font-medium">
-                    âš ï¸ Emin misiniz? Bu iÅŸlem geri alÄ±namaz!
+                    ⚠️ Emin misiniz? Bu işlem geri alınamaz!
                   </p>
                   <div className="flex gap-2">
                     <button
@@ -502,13 +620,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* App Info */}
       <div className="bg-slate-50 rounded-xl border border-slate-200 p-6 text-center">
         <h2 className="font-bold text-slate-800">DersTakipCO</h2>
-        <p className="text-slate-500 text-sm mt-1">Versiyon 2.0.0</p>
+        {appVersion && <p className="text-slate-500 text-sm mt-1">Versiyon {appVersion}</p>}
         <p className="text-slate-400 text-xs mt-2">
           Öğretmenler için çevrimdışı ders takip uygulaması
         </p>
         <div className="mt-4 pt-4 border-t border-slate-200">
           <p className="text-xs text-slate-400">
-            Tüm veriler yerel olarak tarayıcınızda saklanır.
+            Tüm veriler yalnızca bu bilgisayarda saklanır, internete gönderilmez.
           </p>
         </div>
       </div>

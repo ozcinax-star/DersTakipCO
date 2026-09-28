@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ViewState, Teacher, Student, Lesson, Group, ReportTemplate, BackupData } from './types';
-import { dbService } from './services/db';
+import { Teacher, Student, Lesson, Group, ReportTemplate, BackupData, FullBackupData } from './types';
+import { dbService, MigrationInfo, RestoreResult } from './services/db';
 import { Dashboard } from './components/Dashboard';
 import { StudentsView } from './components/StudentsView';
 import { CalendarView } from './components/CalendarView';
@@ -12,7 +12,7 @@ import { GoalsView } from './components/GoalsView';
 import { ReportsView } from './components/ReportsView';
 import { SettingsView } from './components/SettingsView';
 import { InstitutionView } from './components/InstitutionView';
-import { LayoutDashboard, Users, Calendar, PieChart, LogOut, PlusCircle, List, Plus, Sparkles, Target, FileText, Settings, Building2 } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, PieChart, LogOut, PlusCircle, List, Plus, Sparkles, Target, FileText, Settings, Building2, CheckCircle, X, Loader2, RefreshCw } from 'lucide-react';
 
 // Extended ViewState enum with all new views
 enum ExtendedViewState {
@@ -46,11 +46,77 @@ const App: React.FC = () => {
   const [loginSubject, setLoginSubject] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // Initialize Data
+  // Açılış ve eski uygulamadan aktarım durumu
+  const [isStarting, setIsStarting] = useState(true);
+  const [isScanning, setIsScanning] = useState(false);
+  const [migrationNotice, setMigrationNotice] = useState<MigrationInfo | null>(null);
+  const [scanMessage, setScanMessage] = useState('');
+  const [appVersion, setAppVersion] = useState('');
+
+  // Eski DersTakipCO (Mağaza sürümü) verilerini arar; bulursa aktarır
+  const importFromOldApp = async (): Promise<MigrationInfo | null> => {
+    if (!window.derstakip) return null;
+    const results = await window.derstakip.scanOldAppData();
+    const best = results.find(r => r.data && r.counts);
+    if (!best || !best.data) {
+      const failed = results.find(r => r.error);
+      if (failed) console.error('Eski veri okunamadı:', failed.path, failed.error);
+      return null;
+    }
+    return dbService.importFromOldApp(best.data, best.source);
+  };
+
+  // İlk açılış: veri yoksa demo veri oluşturmak yerine eski uygulamadan otomatik aktar
   useEffect(() => {
-    dbService.seedData(); // Create mock data if empty
-    refreshData();
+    const init = async () => {
+      window.derstakip?.getVersion().then(setAppVersion).catch(() => undefined);
+      if (dbService.getTeachers().length === 0 && !dbService.getMigrationInfo()) {
+        try {
+          const info = await importFromOldApp();
+          if (info) {
+            setMigrationNotice(info);
+          } else {
+            dbService.markMigrationChecked();
+          }
+        } catch (err) {
+          console.error('Eski veri aktarımı başarısız', err);
+        }
+      }
+      refreshData();
+      setIsStarting(false);
+    };
+    init();
   }, []);
+
+  // Profil ekranındaki "Eski verileri ara" düğmesi
+  const handleManualScan = async () => {
+    setIsScanning(true);
+    setScanMessage('');
+    try {
+      const info = await importFromOldApp();
+      if (info) {
+        setMigrationNotice(info);
+      } else {
+        setScanMessage('Bu bilgisayarda eski DersTakipCO verisi bulunamadı.');
+      }
+    } catch {
+      setScanMessage('Eski veriler okunurken bir hata oluştu.');
+    } finally {
+      refreshData();
+      setIsScanning(false);
+    }
+  };
+
+  // Ayarlar ekranından tüm verileri eski uygulamadakilerle değiştirir
+  const handleImportFromSettings = async (): Promise<MigrationInfo | null> => {
+    const info = await importFromOldApp();
+    if (info) {
+      setCurrentTeacher(null);
+      setMigrationNotice(info);
+      refreshData();
+    }
+    return info;
+  };
 
   const refreshData = () => {
     const t = dbService.getTeachers();
@@ -108,36 +174,21 @@ const App: React.FC = () => {
     refreshData();
   };
 
-  // Handler for restoring backup
-  const handleRestoreBackup = (data: BackupData) => {
-    // Update teacher
-    if (data.teacher) {
-      dbService.updateTeacher(data.teacher);
-      setCurrentTeacher(data.teacher);
+  // Yedek geri yükleme: kayıt kimlikleri korunur, öğretmen profili listede kalıcı olur
+  const handleRestoreBackup = (data: BackupData | FullBackupData): RestoreResult => {
+    const result = dbService.restoreBackup(data);
+    const restoredTeachers = dbService.getTeachers();
+    const stillCurrent = currentTeacher && restoredTeachers.find(t => t.id === currentTeacher.id);
+    const next = stillCurrent || restoredTeachers.find(t => t.id === result.teacherIds[0]) || null;
+    setCurrentTeacher(next);
+    setTeachers(restoredTeachers);
+    if (next) {
+      setStudents(dbService.getStudents(next.id));
+      setLessons(dbService.getLessons(next.id));
+      setGroups(dbService.getGroups(next.id));
+      setTemplates(dbService.getTemplates(next.id));
     }
-    
-    // Clear and restore students
-    const currentStudents = dbService.getStudents(data.teacher.id);
-    currentStudents.forEach(s => dbService.deleteStudent(s.id));
-    data.students.forEach(s => {
-      dbService.createStudent(s.teacherId, s);
-    });
-    
-    // Clear and restore lessons
-    const currentLessons = dbService.getLessons(data.teacher.id);
-    currentLessons.forEach(l => dbService.deleteLesson(l.id));
-    data.lessons.forEach(l => {
-      dbService.createLesson(l.teacherId, l);
-    });
-    
-    // Clear and restore groups
-    const currentGroups = dbService.getGroups(data.teacher.id);
-    currentGroups.forEach(g => dbService.deleteGroup(g.id));
-    data.groups.forEach(g => {
-      dbService.createGroup(g.teacherId, g.name, g.color);
-    });
-    
-    refreshData();
+    return result;
   };
 
   // Handler for clearing all data
@@ -159,6 +210,15 @@ const App: React.FC = () => {
     }
   };
 
+  if (isStarting) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 text-slate-500">
+        <Loader2 className="animate-spin text-orange-600 mb-4" size={36} />
+        <p className="font-medium">Verileriniz hazırlanıyor...</p>
+      </div>
+    );
+  }
+
   if (!currentTeacher) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -166,12 +226,44 @@ const App: React.FC = () => {
           <div className="text-center">
             <h1 className="text-3xl font-extrabold text-orange-600 mb-2">DersTakipCO</h1>
             <p className="text-slate-500">Öğretmenler için Çevrimdışı Ders Takibi</p>
-            <p className="text-xs text-slate-400 mt-1">v2.0</p>
+            {appVersion && <p className="text-xs text-slate-400 mt-1">v{appVersion}</p>}
           </div>
+
+          {migrationNotice && (
+            <div className="flex items-start gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800">
+              <CheckCircle className="flex-shrink-0 mt-0.5" size={20} />
+              <div className="flex-1 text-sm">
+                <p className="font-bold">Eski verileriniz aktarıldı</p>
+                <p>
+                  {migrationNotice.counts.teachers} profil, {migrationNotice.counts.students} öğrenci, {migrationNotice.counts.lessons} ders
+                  {migrationNotice.counts.groups > 0 && `, ${migrationNotice.counts.groups} grup`} önceki DersTakipCO uygulamasından alındı.
+                </p>
+              </div>
+              <button onClick={() => setMigrationNotice(null)} className="text-emerald-600 hover:text-emerald-800" aria-label="Kapat">
+                <X size={18} />
+              </button>
+            </div>
+          )}
 
           {!isRegistering ? (
             <div className="space-y-4">
               <h2 className="text-xl font-bold text-slate-800 text-center">Profil Seçiniz</h2>
+              {teachers.length === 0 && (
+                <div className="text-center text-sm text-slate-500 space-y-3">
+                  <p>Henüz bir profil yok. Başlamak için yeni bir profil oluşturun.</p>
+                  {window.derstakip && (
+                    <button
+                      onClick={handleManualScan}
+                      disabled={isScanning}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg font-medium disabled:opacity-60"
+                    >
+                      <RefreshCw size={16} className={isScanning ? 'animate-spin' : ''} />
+                      {isScanning ? 'Aranıyor...' : 'Eski DersTakipCO verilerini ara'}
+                    </button>
+                  )}
+                  {scanMessage && <p className="text-slate-400">{scanMessage}</p>}
+                </div>
+              )}
               <div className="grid gap-3">
                 {teachers.map(t => (
                   <button 
@@ -421,6 +513,7 @@ const App: React.FC = () => {
                groups={groups}
                onRestoreBackup={handleRestoreBackup}
                onClearAllData={handleClearAllData}
+               onImportFromOldApp={window.derstakip ? handleImportFromSettings : undefined}
              />
            )}
            {view === ExtendedViewState.INSTITUTION && (

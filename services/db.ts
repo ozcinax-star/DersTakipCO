@@ -1,12 +1,18 @@
-import { Teacher, Student, Lesson, Group, ReportTemplate, LessonStatus } from '../types';
+import { Teacher, Student, Lesson, Group, ReportTemplate, LessonStatus, BackupData, FullBackupData } from '../types';
 
-const STORAGE_KEYS = {
+// Anahtar adları eski (Mağaza v2.x) sürümle aynı kalmalı: aktarım ve eski yedekler bunlara dayanıyor
+export const STORAGE_KEYS = {
   TEACHERS: 'derstakipco_teachers',
   STUDENTS: 'derstakipco_students',
   LESSONS: 'derstakipco_lessons',
   GROUPS: 'derstakipco_groups',
   TEMPLATES: 'derstakipco_templates',
 };
+
+export const PRICING_STORAGE_KEY = 'derstakipco_default_pricing';
+const MIGRATION_KEY = 'derstakipco_migration';
+
+export const APP_DATA_VERSION = '3.0.0';
 
 const generateId = (): string => {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
@@ -19,15 +25,64 @@ const STUDENT_COLORS = [
   '#ec4899', '#f43f5e'
 ];
 
+// Bozuk bir kayıt tüm uygulamayı çökertmesin
+const readArray = <T,>(key: string): T[] => {
+  const data = localStorage.getItem(key);
+  if (!data) return [];
+  try {
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    console.error(`Bozuk kayıt okunamadı: ${key}`);
+    return [];
+  }
+};
+
+const isObjectArray = (value: unknown): value is Record<string, unknown>[] =>
+  Array.isArray(value) && value.every(v => v !== null && typeof v === 'object');
+
+export interface MigrationInfo {
+  date: string;
+  source: string;
+  counts: { teachers: number; students: number; lessons: number; groups: number };
+}
+
+export interface RestoreResult {
+  teacherIds: string[];
+  teachers: number;
+  students: number;
+  lessons: number;
+  groups: number;
+}
+
 class DBService {
+  private autoBackupTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Her kayıttan sonra (birkaç saniye gecikmeyle) Belgeler klasörüne otomatik yedek alınır
+  private scheduleAutoBackup(): void {
+    if (!window.derstakip?.autoBackup) return;
+    if (this.autoBackupTimer) clearTimeout(this.autoBackupTimer);
+    this.autoBackupTimer = setTimeout(() => {
+      this.autoBackupTimer = null;
+      if (this.getTeachers().length === 0) return;
+      window.derstakip?.autoBackup(JSON.stringify(this.exportAll(), null, 2)).catch(err => {
+        console.error('Otomatik yedek alınamadı', err);
+      });
+    }, 3000);
+  }
+
+  private write(key: string, value: unknown): void {
+    localStorage.setItem(key, JSON.stringify(value));
+    this.scheduleAutoBackup();
+  }
+
   // ============ TEACHERS ============
   getTeachers(): Teacher[] {
-    const data = localStorage.getItem(STORAGE_KEYS.TEACHERS);
-    return data ? JSON.parse(data) : [];
+    return readArray<Teacher>(STORAGE_KEYS.TEACHERS);
   }
 
   saveTeachers(teachers: Teacher[]): void {
-    localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(teachers));
+    this.write(STORAGE_KEYS.TEACHERS, teachers);
   }
 
   createTeacher(name: string, subject: string): Teacher {
@@ -43,13 +98,16 @@ class DBService {
     return newTeacher;
   }
 
+  // Öğretmen kayıtlı değilse eklenir (eski sürüm bu durumda sessizce hiçbir şey yapmıyordu)
   updateTeacher(teacher: Teacher): Teacher {
     const teachers = this.getTeachers();
     const index = teachers.findIndex(t => t.id === teacher.id);
     if (index !== -1) {
       teachers[index] = teacher;
-      this.saveTeachers(teachers);
+    } else {
+      teachers.push(teacher);
     }
+    this.saveTeachers(teachers);
     return teacher;
   }
 
@@ -69,18 +127,15 @@ class DBService {
 
   // ============ STUDENTS ============
   getStudents(teacherId: string): Student[] {
-    const data = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-    const students: Student[] = data ? JSON.parse(data) : [];
-    return students.filter(s => s.teacherId === teacherId);
+    return this.getAllStudents().filter(s => s.teacherId === teacherId);
   }
 
   getAllStudents(): Student[] {
-    const data = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-    return data ? JSON.parse(data) : [];
+    return readArray<Student>(STORAGE_KEYS.STUDENTS);
   }
 
   saveStudents(students: Student[]): void {
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+    this.write(STORAGE_KEYS.STUDENTS, students);
   }
 
   createStudent(teacherId: string, data: Partial<Student>): Student {
@@ -89,13 +144,16 @@ class DBService {
       id: generateId(),
       teacherId,
       name: data.name || 'Yeni Öğrenci',
+      educationLevel: data.educationLevel,
       gradeLevel: data.gradeLevel,
       parentName: data.parentName,
       contactNumber: data.contactNumber,
+      email: data.email,
       notes: data.notes,
       hourlyRate: data.hourlyRate || 500,
       color: data.color || STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
       groupIds: data.groupIds || [],
+      createdAt: Date.now(),
     };
     allStudents.push(newStudent);
     this.saveStudents(allStudents);
@@ -106,54 +164,47 @@ class DBService {
     const allStudents = this.getAllStudents();
     const index = allStudents.findIndex(s => s.id === studentId);
     if (index === -1) return null;
-    
+
     allStudents[index] = { ...allStudents[index], ...data };
     this.saveStudents(allStudents);
     return allStudents[index];
   }
 
-  // FIXED: Actually delete student from localStorage
   deleteStudent(studentId: string): boolean {
     const allStudents = this.getAllStudents();
     const filteredStudents = allStudents.filter(s => s.id !== studentId);
-    
+
     if (filteredStudents.length === allStudents.length) {
-      return false; // Student not found
+      return false;
     }
-    
-    // Save the filtered list (without the deleted student)
+
     this.saveStudents(filteredStudents);
-    
-    // Also delete all lessons associated with this student
+
+    // Öğrenciye ait dersleri de sil
     const allLessons = this.getAllLessons();
-    const filteredLessons = allLessons.filter(l => l.studentId !== studentId);
-    this.saveLessons(filteredLessons);
-    
-    // Remove student from any groups
+    this.saveLessons(allLessons.filter(l => l.studentId !== studentId));
+
+    // Öğrenciyi gruplardan çıkar
     const allGroups = this.getAllGroups();
-    const updatedGroups = allGroups.map(g => ({
+    this.saveGroups(allGroups.map(g => ({
       ...g,
-      studentIds: g.studentIds.filter(id => id !== studentId)
-    }));
-    this.saveGroups(updatedGroups);
-    
+      studentIds: (g.studentIds || []).filter(id => id !== studentId)
+    })));
+
     return true;
   }
 
   // ============ LESSONS ============
   getLessons(teacherId: string): Lesson[] {
-    const data = localStorage.getItem(STORAGE_KEYS.LESSONS);
-    const lessons: Lesson[] = data ? JSON.parse(data) : [];
-    return lessons.filter(l => l.teacherId === teacherId);
+    return this.getAllLessons().filter(l => l.teacherId === teacherId);
   }
 
   getAllLessons(): Lesson[] {
-    const data = localStorage.getItem(STORAGE_KEYS.LESSONS);
-    return data ? JSON.parse(data) : [];
+    return readArray<Lesson>(STORAGE_KEYS.LESSONS);
   }
 
   saveLessons(lessons: Lesson[]): void {
-    localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(lessons));
+    this.write(STORAGE_KEYS.LESSONS, lessons);
   }
 
   createLesson(teacherId: string, data: Partial<Lesson>): Lesson {
@@ -170,6 +221,8 @@ class DBService {
       homework: data.homework,
       price: data.price || 0,
       paid: data.paid || false,
+      attendanceStatus: data.attendanceStatus,
+      participationScore: data.participationScore,
     };
     allLessons.push(newLesson);
     this.saveLessons(allLessons);
@@ -180,50 +233,44 @@ class DBService {
     const allLessons = this.getAllLessons();
     const index = allLessons.findIndex(l => l.id === lessonId);
     if (index === -1) return null;
-    
+
     allLessons[index] = { ...allLessons[index], ...data };
     this.saveLessons(allLessons);
     return allLessons[index];
   }
 
-  // FIXED: Actually delete lesson from localStorage
   deleteLesson(lessonId: string): boolean {
     const allLessons = this.getAllLessons();
     const filteredLessons = allLessons.filter(l => l.id !== lessonId);
-    
+
     if (filteredLessons.length === allLessons.length) {
-      return false; // Lesson not found
+      return false;
     }
-    
-    // Save the filtered list (without the deleted lesson)
+
     this.saveLessons(filteredLessons);
     return true;
   }
 
-  // Bulk delete lessons
   deleteLessons(lessonIds: string[]): number {
     const allLessons = this.getAllLessons();
     const filteredLessons = allLessons.filter(l => !lessonIds.includes(l.id));
     const deletedCount = allLessons.length - filteredLessons.length;
-    
+
     this.saveLessons(filteredLessons);
     return deletedCount;
   }
 
   // ============ GROUPS ============
   getGroups(teacherId: string): Group[] {
-    const data = localStorage.getItem(STORAGE_KEYS.GROUPS);
-    const groups: Group[] = data ? JSON.parse(data) : [];
-    return groups.filter(g => g.teacherId === teacherId);
+    return this.getAllGroups().filter(g => g.teacherId === teacherId);
   }
 
   getAllGroups(): Group[] {
-    const data = localStorage.getItem(STORAGE_KEYS.GROUPS);
-    return data ? JSON.parse(data) : [];
+    return readArray<Group>(STORAGE_KEYS.GROUPS);
   }
 
   saveGroups(groups: Group[]): void {
-    localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+    this.write(STORAGE_KEYS.GROUPS, groups);
   }
 
   createGroup(teacherId: string, name: string, color: string): Group {
@@ -244,7 +291,7 @@ class DBService {
     const allGroups = this.getAllGroups();
     const index = allGroups.findIndex(g => g.id === groupId);
     if (index === -1) return null;
-    
+
     allGroups[index] = { ...allGroups[index], ...data };
     this.saveGroups(allGroups);
     return allGroups[index];
@@ -253,104 +300,164 @@ class DBService {
   deleteGroup(groupId: string): boolean {
     const allGroups = this.getAllGroups();
     const filteredGroups = allGroups.filter(g => g.id !== groupId);
-    
+
     if (filteredGroups.length === allGroups.length) {
       return false;
     }
-    
+
     this.saveGroups(filteredGroups);
-    
-    // Remove group from students
+
+    // Grubu öğrencilerden çıkar
     const allStudents = this.getAllStudents();
-    const updatedStudents = allStudents.map(s => ({
+    this.saveStudents(allStudents.map(s => ({
       ...s,
-      groupIds: s.groupIds.filter(id => id !== groupId)
-    }));
-    this.saveStudents(updatedStudents);
-    
+      groupIds: (s.groupIds || []).filter(id => id !== groupId)
+    })));
+
     return true;
   }
 
   // ============ TEMPLATES ============
   getTemplates(teacherId: string): ReportTemplate[] {
-    const data = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
-    const templates: ReportTemplate[] = data ? JSON.parse(data) : [];
-    return templates.filter(t => t.teacherId === teacherId);
+    return readArray<ReportTemplate>(STORAGE_KEYS.TEMPLATES).filter(t => t.teacherId === teacherId);
   }
 
-  // ============ SEED DATA ============
-  seedData(): void {
-    const teachers = this.getTeachers();
-    if (teachers.length > 0) return;
+  // ============ YEDEKLEME ============
 
-    // Create demo teacher
-    const teacher = this.createTeacher('Ayşe Yılmaz', 'Piyano');
-    
-    // Create demo students
-    const student1 = this.createStudent(teacher.id, {
-      name: 'Ali Demir',
-      gradeLevel: '6. Sınıf',
-      hourlyRate: 600,
-      parentName: 'Mehmet Demir',
-      contactNumber: '0532 111 2233',
-    });
-    
-    const student2 = this.createStudent(teacher.id, {
-      name: 'Zeynep Kaya',
-      gradeLevel: '8. Sınıf',
-      hourlyRate: 650,
-      parentName: 'Fatma Kaya',
-      contactNumber: '0533 222 3344',
-    });
-    
-    const student3 = this.createStudent(teacher.id, {
-      name: 'Cem Özkan',
-      gradeLevel: '5. Sınıf',
-      hourlyRate: 550,
-      parentName: 'Aysel Özkan',
-      contactNumber: '0534 333 4455',
-    });
+  // Tüm profilleri kapsayan tam yedek
+  exportAll(): FullBackupData {
+    let defaultPricing: unknown;
+    try {
+      const raw = localStorage.getItem(PRICING_STORAGE_KEY);
+      defaultPricing = raw ? JSON.parse(raw) : undefined;
+    } catch {
+      defaultPricing = undefined;
+    }
+    return {
+      app: 'DersTakipCO',
+      version: APP_DATA_VERSION,
+      createdAt: new Date().toISOString(),
+      teachers: this.getTeachers(),
+      students: this.getAllStudents(),
+      lessons: this.getAllLessons(),
+      groups: this.getAllGroups(),
+      templates: readArray<ReportTemplate>(STORAGE_KEYS.TEMPLATES),
+      defaultPricing,
+    };
+  }
 
-    // Create demo lessons for the past week and next week
-    const now = new Date();
-    const lessons = [
-      // Past lessons (completed)
-      { studentId: student1.id, dayOffset: -5, hour: 14, status: LessonStatus.COMPLETED, paid: true },
-      { studentId: student2.id, dayOffset: -4, hour: 16, status: LessonStatus.COMPLETED, paid: true },
-      { studentId: student3.id, dayOffset: -3, hour: 10, status: LessonStatus.COMPLETED, paid: false },
-      { studentId: student1.id, dayOffset: -2, hour: 15, status: LessonStatus.COMPLETED, paid: true },
-      { studentId: student2.id, dayOffset: -1, hour: 11, status: LessonStatus.CANCELLED, paid: false },
-      // Future lessons (scheduled)
-      { studentId: student1.id, dayOffset: 1, hour: 14, status: LessonStatus.SCHEDULED, paid: false },
-      { studentId: student2.id, dayOffset: 2, hour: 16, status: LessonStatus.SCHEDULED, paid: false },
-      { studentId: student3.id, dayOffset: 3, hour: 10, status: LessonStatus.SCHEDULED, paid: false },
-      { studentId: student1.id, dayOffset: 5, hour: 15, status: LessonStatus.SCHEDULED, paid: false },
-      { studentId: student2.id, dayOffset: 6, hour: 11, status: LessonStatus.SCHEDULED, paid: false },
-    ];
+  // Hem yeni tam yedekleri (v3) hem de eski tek profilli yedekleri (v2) kabul eder.
+  // Kayıt kimlikleri korunur; böylece dersler doğru öğrencilere bağlı kalır.
+  restoreBackup(data: BackupData | FullBackupData): RestoreResult {
+    if ('teachers' in data && Array.isArray(data.teachers)) {
+      if (![data.teachers, data.students, data.lessons].every(isObjectArray)) {
+        throw new Error('Geçersiz yedek dosyası');
+      }
+      localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(data.teachers));
+      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(data.students));
+      localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(data.lessons));
+      localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(isObjectArray(data.groups) ? data.groups : []));
+      localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(isObjectArray(data.templates) ? data.templates : []));
+      if (data.defaultPricing && typeof data.defaultPricing === 'object') {
+        localStorage.setItem(PRICING_STORAGE_KEY, JSON.stringify(data.defaultPricing));
+      }
+      this.scheduleAutoBackup();
+      return {
+        teacherIds: data.teachers.map(t => t.id),
+        teachers: data.teachers.length,
+        students: data.students.length,
+        lessons: data.lessons.length,
+        groups: isObjectArray(data.groups) ? data.groups.length : 0,
+      };
+    }
 
-    lessons.forEach(lesson => {
-      const start = new Date(now);
-      start.setDate(start.getDate() + lesson.dayOffset);
-      start.setHours(lesson.hour, 0, 0, 0);
-      
-      const end = new Date(start);
-      end.setHours(lesson.hour + 1);
-      
-      const student = [student1, student2, student3].find(s => s.id === lesson.studentId);
-      
-      this.createLesson(teacher.id, {
-        studentId: lesson.studentId,
-        start: start.toISOString(),
-        end: end.toISOString(),
-        status: lesson.status,
-        price: student?.hourlyRate || 500,
-        paid: lesson.paid,
-        subject: 'Piyano Dersi',
-      });
-    });
+    const single = data as BackupData;
+    if (!single.teacher || !single.teacher.id || ![single.students, single.lessons].every(isObjectArray)) {
+      throw new Error('Geçersiz yedek dosyası');
+    }
+    const teacherId = single.teacher.id;
+    const groups = isObjectArray(single.groups) ? single.groups : [];
 
-    // Create a demo group
-    this.createGroup(teacher.id, 'Başlangıç Grubu', '#3b82f6');
+    // Bu profile ait eski kayıtları, yedekteki kayıtlarla değiştir (diğer profillere dokunma)
+    this.updateTeacher(single.teacher);
+    this.saveStudents([
+      ...this.getAllStudents().filter(s => s.teacherId !== teacherId),
+      ...single.students.map(s => ({ ...s, teacherId })),
+    ]);
+    this.saveLessons([
+      ...this.getAllLessons().filter(l => l.teacherId !== teacherId),
+      ...single.lessons.map(l => ({ ...l, teacherId })),
+    ]);
+    this.saveGroups([
+      ...this.getAllGroups().filter(g => g.teacherId !== teacherId),
+      ...groups.map(g => ({ ...g, teacherId })),
+    ]);
+
+    return {
+      teacherIds: [teacherId],
+      teachers: 1,
+      students: single.students.length,
+      lessons: single.lessons.length,
+      groups: groups.length,
+    };
+  }
+
+  // ============ ESKİ UYGULAMADAN AKTARIM ============
+
+  getMigrationInfo(): MigrationInfo | null {
+    try {
+      const raw = localStorage.getItem(MIGRATION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Eski uygulamanın localStorage kayıtlarını (ham metin) bu uygulamaya yazar
+  importFromOldApp(raw: Record<string, string>, source: string): MigrationInfo {
+    const parse = (key: string): Record<string, unknown>[] => {
+      try {
+        const value = JSON.parse(raw[key] || '[]');
+        return isObjectArray(value) ? value : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const teachers = parse(STORAGE_KEYS.TEACHERS);
+    const students = parse(STORAGE_KEYS.STUDENTS);
+    const lessons = parse(STORAGE_KEYS.LESSONS);
+    const groups = parse(STORAGE_KEYS.GROUPS);
+
+    localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(teachers));
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+    localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(lessons));
+    localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(parse(STORAGE_KEYS.TEMPLATES)));
+    if (raw[PRICING_STORAGE_KEY]) {
+      try {
+        JSON.parse(raw[PRICING_STORAGE_KEY]);
+        localStorage.setItem(PRICING_STORAGE_KEY, raw[PRICING_STORAGE_KEY]);
+      } catch {
+        // Bozuk ücret ayarı varsayılanlarla devam eder
+      }
+    }
+
+    const info: MigrationInfo = {
+      date: new Date().toISOString(),
+      source,
+      counts: { teachers: teachers.length, students: students.length, lessons: lessons.length, groups: groups.length },
+    };
+    localStorage.setItem(MIGRATION_KEY, JSON.stringify(info));
+    this.scheduleAutoBackup();
+    return info;
+  }
+
+  // Aktarım denemesi yapıldığını kaydeder (eski veri bulunamasa bile tekrar taranmasın)
+  markMigrationChecked(): void {
+    if (!localStorage.getItem(MIGRATION_KEY)) {
+      localStorage.setItem(MIGRATION_KEY, JSON.stringify({ date: new Date().toISOString(), source: 'yok', counts: { teachers: 0, students: 0, lessons: 0, groups: 0 } }));
+    }
   }
 
   // ============ UTILITY ============

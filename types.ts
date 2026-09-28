@@ -203,3 +203,15 @@ export interface BackupData {
   groups: Group[];
   institutions?: Institution[];
 }
+// Tam yedek (v3): tüm öğretmen profillerini ve ayarları içerir
+export interface FullBackupData {
+  app: 'DersTakipCO';
+  version: string;
+  createdAt: string;
+  teachers: Teacher[];
+  students: Student[];
+  lessons: Lesson[];
+  groups: Group[];
+  templates?: ReportTemplate[];
+  defaultPricing?: unknown;
+}
