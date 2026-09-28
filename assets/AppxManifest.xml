@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
+  
+  <Identity Name="TEGAY.DersTakipCO"
+            Publisher="CN=0D9E0019-A930-4E3C-88E1-754EA638E3D5"
+            Version="2.1.0.0" />
+  
+  <Properties>
+    <DisplayName>DersTakipCO</DisplayName>
+    <PublisherDisplayName>Çınar Öz</PublisherDisplayName>
+    <Logo>assets\StoreLogo.png</Logo>
+  </Properties>
+  
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+  
+  <Resources>
+    <Resource Language="tr-TR"/>
+    <Resource Language="en-US"/>
+  </Resources>
+  
+  <Applications>
+    <Application Id="DersTakipCO" Executable="DersTakipCO.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="DersTakipCO"
+                          Description="Özel ders öğretmenleri için profesyonel takip ve yönetim uygulaması. Öğrenci bilgileri, ders programları, finansal takip ve raporlama özellikleri."
+                          BackgroundColor="#f97316"
+                          Square150x150Logo="assets\Square150x150Logo.png"
+                          Square44x44Logo="assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="assets\Wide310x150Logo.png"
+                         ShortName="DersTakip"
+                         Square310x310Logo="assets\Square150x150Logo.png">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo"/>
+            <uap:ShowOn Tile="wide310x150Logo"/>
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+  
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+  
+</Package>

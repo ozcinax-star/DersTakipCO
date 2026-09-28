@@ -1,0 +1,86 @@
+{
+  "name": "derstakipco",
+  "version": "3.0.0",
+  "description": "Özel Ders Takip Masaüstü Uygulaması - DersTakipCO",
+  "author": "Çınar Öz",
+  "license": "MIT",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "tr.com.cinaroz.derstakipco",
+    "productName": "DersTakipCO",
+    "copyright": "Copyright © 2026 Çınar Öz",
+    "icon": "assets/icon.ico",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/icon.ico",
+      "assets/icon.png"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}-${name}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DersTakipCO",
+      "artifactName": "${productName}-Kurulum-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Tasinabilir-${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "date-fns": "^3.0.6",
+    "lucide-react": "^0.294.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.10.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.6.1",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "postcss": "^8.5.28",
+    "tailwindcss": "3.4",
+    "typescript": "5.6",
+    "vite": "^5.4.21",
+    "wait-on": "^9.1.0"
+  }
+}
