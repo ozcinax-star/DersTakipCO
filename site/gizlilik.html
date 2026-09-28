@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DersTakipCO Gizlilik Politikası</title>
+  <style>
+    :root { --fg: #1e293b; --muted: #475569; --accent: #ea580c; --bg: #f8fafc; --card: #ffffff; --line: #e2e8f0; }
+    @media (prefers-color-scheme: dark) { :root { --fg: #e2e8f0; --muted: #94a3b8; --bg: #0f172a; --card: #1e293b; --line: #334155; } }
+    body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; line-height: 1.65; }
+    main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+    article { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 32px; }
+    h1 { color: var(--accent); margin-top: 0; }
+    h2 { margin-top: 32px; font-size: 1.15rem; }
+    p, li { color: var(--muted); }
+    a { color: var(--accent); }
+    .meta { font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>
+<article>
+  <h1>DersTakipCO Gizlilik Politikası</h1>
+  <p class="meta">Son güncelleme: 28 Eylül 2026</p>
+
+  <p>DersTakipCO, özel ders veren öğretmenlerin ders, öğrenci ve ödeme kayıtlarını tutmasına yardımcı olan bir Windows masaüstü uygulamasıdır. Bu politika, uygulamanın hangi verileri nasıl işlediğini açıklar.</p>
+
+  <h2>1. Verileriniz nerede saklanır?</h2>
+  <p>Uygulamaya girdiğiniz tüm bilgiler (öğretmen profilleri, öğrenciler, veli iletişim bilgileri, dersler, ücretler ve notlar) yalnızca kendi bilgisayarınızda saklanır. Uygulamanın geliştiricisi dahil hiçbir üçüncü taraf bu verilere erişemez. Uygulama reklam, analiz veya takip hizmeti kullanmaz.</p>
+  <p>Uygulama, verilerinizin otomatik yedeklerini bilgisayarınızdaki <em>Belgeler\DersTakipCO Yedekler</em> klasörüne kaydeder.</p>
+
+  <h2>2. İsteğe bağlı Google Drive aktarımı</h2>
+  <p>Verilerinizi başka bir bilgisayara taşımak için Google Drive aktarımını kullanmayı seçebilirsiniz. Bu özellik varsayılan olarak kapalıdır ve yalnızca siz <strong>Ayarlar → Google Drive ile Aktarım</strong> bölümünden bağlandığınızda çalışır.</p>
+  <ul>
+    <li><strong>İstenen izin:</strong> yalnızca <code>drive.appdata</code>. Bu izin, uygulamanın Google Drive'ınızda kendine ait gizli bir klasöre dosya yazıp okumasına olanak tanır. Uygulama Drive'daki diğer dosyalarınızı göremez, okuyamaz veya değiştiremez.</li>
+    <li><strong>Gönderilen veri:</strong> "Drive'a Yükle" düğmesine bastığınızda, uygulamadaki verilerinizin bir kopyası (tek bir JSON dosyası) ve bilgisayarınızın adı Google Drive hesabınızdaki bu gizli klasöre yüklenir. "Drive'dan Verileri Çek" düğmesine bastığınızda bu dosya aynı hesapla giriş yaptığınız bilgisayara indirilir.</li>
+    <li><strong>Hesap bilgisi:</strong> Bağlı hesabı size gösterebilmek için Google hesabınızın e-posta adresi bilgisayarınızda saklanır.</li>
+    <li><strong>Erişim anahtarı:</strong> Google'ın verdiği erişim anahtarı, Windows'un kullanıcıya özel şifrelemesiyle yalnızca bilgisayarınızda saklanır.</li>
+    <li>Veriler doğrudan bilgisayarınız ile Google arasında aktarılır; geliştiriciye ait herhangi bir sunucudan geçmez.</li>
+  </ul>
+
+  <h2>3. Google kullanıcı verilerinin kullanımı</h2>
+  <p>DersTakipCO'nun Google API'lerinden aldığı bilgileri kullanması ve başka uygulamalara aktarması, Sınırlı Kullanım şartları da dahil olmak üzere <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Hizmetleri Kullanıcı Verileri Politikası</a>'na uygundur. Google Drive'dan alınan veriler yalnızca size veri aktarımı özelliğini sunmak için kullanılır; satılmaz, reklam için kullanılmaz ve üçüncü taraflarla paylaşılmaz.</p>
+
+  <h2>4. Bağlantıyı kesme ve verileri silme</h2>
+  <ul>
+    <li>Uygulamada <strong>Bağlantıyı Kes</strong> düğmesi, bilgisayarınızdaki erişim anahtarını siler ve Google'daki izni geri alır.</li>
+    <li>Google Drive'daki kopyayı silmek için: <a href="https://drive.google.com/drive/settings">drive.google.com → Ayarlar → Uygulamaları yönet</a> bölümünde DersTakipCO'yu bulup <em>Gizli uygulama verilerini sil</em> seçeneğini kullanın.</li>
+    <li>Uygulamaya verdiğiniz izni dilediğiniz zaman <a href="https://myaccount.google.com/permissions">Google Hesabı → Üçüncü taraf erişimi</a> sayfasından da kaldırabilirsiniz.</li>
+    <li>Bilgisayarınızdaki verileri uygulamanın Ayarlar bölümünden silebilir veya uygulamayı kaldırabilirsiniz.</li>
+  </ul>
+
+  <h2>5. Çocukların gizliliği</h2>
+  <p>Uygulama öğretmenler tarafından kullanılmak üzere tasarlanmıştır. Öğrenci bilgileri öğretmen tarafından girilir ve yalnızca öğretmenin bilgisayarında (ve seçerse kendi Google Drive hesabında) saklanır.</p>
+
+  <h2>6. Değişiklikler</h2>
+  <p>Bu politika güncellenirse yeni sürüm bu sayfada yayınlanır ve üstteki tarih değiştirilir.</p>
+
+  <h2>7. İletişim</h2>
+  <p>Sorularınız için: <a href="mailto:cinar@cinaroz.com.tr">cinar@cinaroz.com.tr</a></p>
+</article>
+</main>
+</body>
+</html>
