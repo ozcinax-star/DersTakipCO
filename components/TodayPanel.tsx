@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
 import { Student, Lesson, LessonStatus } from '../types';
-import { 
-  Sun, Calendar, DollarSign, AlertTriangle, Clock, 
-  CheckCircle, Users, ArrowRight, Bell, TrendingUp,
+import {
+  Sun, Sunset, Moon, Calendar, DollarSign, AlertTriangle, Clock,
+  CheckCircle, Users, ArrowRight, Bell,
   Coffee, BookOpen, FileText
 } from 'lucide-react';
+import { getWeekStart } from './dateUtils';
 
 interface TodayPanelProps {
   lessons: Lesson[];
@@ -19,19 +20,20 @@ export const TodayPanel: React.FC<TodayPanelProps> = ({
 }) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
-  const todayEnd = new Date(today);
-  todayEnd.setHours(23, 59, 59, 999);
 
   // Bugünkü dersler
   const todayLessons = useMemo(() => {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayStart.getDate() + 1);
     return lessons
       .filter(l => {
         const lessonDate = new Date(l.start);
-        return lessonDate >= today && lessonDate <= todayEnd;
+        return lessonDate >= dayStart && lessonDate < dayEnd;
       })
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-  }, [lessons, today, todayEnd]);
+  }, [lessons]);
 
   // Bekleyen ödemeler (son 30 gündeki ödenmemiş dersler)
   const pendingPayments = useMemo(() => {
@@ -67,53 +69,60 @@ export const TodayPanel: React.FC<TodayPanelProps> = ({
   }, [pendingPayments, students]);
 
   // Uzun süredir ders yapılmayan öğrenciler (14+ gün)
+  // Hiç dersi olmayan yeni öğrenciler ve ileri tarihli planlı dersi olanlar sayılmaz.
   const inactiveStudents = useMemo(() => {
+    const now = new Date();
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-    
+
     return students.filter(student => {
-      const studentLessons = lessons.filter(l => 
-        l.studentId === student.id && 
-        l.status === LessonStatus.COMPLETED
+      const studentLessons = lessons.filter(l => l.studentId === student.id);
+      const hasUpcoming = studentLessons.some(l =>
+        l.status === LessonStatus.SCHEDULED && new Date(l.start) >= now
       );
-      
-      if (studentLessons.length === 0) return true;
-      
-      const lastLesson = studentLessons.reduce((latest, current) => 
+      if (hasUpcoming) return false;
+
+      const completedLessons = studentLessons.filter(l => l.status === LessonStatus.COMPLETED);
+      if (completedLessons.length === 0) return false;
+
+      const lastLesson = completedLessons.reduce((latest, current) =>
         new Date(current.start) > new Date(latest.start) ? current : latest
       );
-      
+
       return new Date(lastLesson.start) < fourteenDaysAgo;
     });
   }, [students, lessons]);
 
   // Bu hafta iptal edilen dersler (yeniden planlanması gereken)
   const cancelledThisWeek = useMemo(() => {
-    const weekStart = new Date(today);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    
-    return lessons.filter(l => 
-      l.status === LessonStatus.CANCELLED &&
-      new Date(l.start) >= weekStart
-    );
-  }, [lessons, today]);
+    const weekStart = getWeekStart();
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 7);
+
+    return lessons.filter(l => {
+      const start = new Date(l.start);
+      return l.status === LessonStatus.CANCELLED && start >= weekStart && start < weekEnd;
+    });
+  }, [lessons]);
 
   // Sıradaki ders
   const nextLesson = useMemo(() => {
     const now = new Date();
-    return todayLessons.find(l => new Date(l.start) > now);
+    return todayLessons.find(l => l.status === LessonStatus.SCHEDULED && new Date(l.start) > now);
   }, [todayLessons]);
 
   // Tamamlanan bugünkü dersler
   const completedToday = todayLessons.filter(l => l.status === LessonStatus.COMPLETED).length;
 
-  // Günün saatine göre selamlama
+  // Günün saatine göre selamlama ve ikon
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Günaydın';
-    if (hour < 18) return 'İyi günler';
-    return 'İyi akşamlar';
+    if (hour >= 5 && hour < 12) return { text: 'Günaydın', icon: <Sun className="w-6 h-6 text-yellow-300" /> };
+    if (hour >= 12 && hour < 18) return { text: 'İyi günler', icon: <Sun className="w-6 h-6 text-yellow-300" /> };
+    if (hour >= 18 && hour < 22) return { text: 'İyi akşamlar', icon: <Sunset className="w-6 h-6 text-amber-200" /> };
+    return { text: 'İyi geceler', icon: <Moon className="w-6 h-6 text-indigo-100" /> };
   };
+  const greeting = getGreeting();
 
   // Toplam bekleyen ödeme
   const totalPending = pendingPayments.reduce((sum, l) => sum + l.price, 0);
@@ -155,8 +164,8 @@ export const TodayPanel: React.FC<TodayPanelProps> = ({
       <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Sun className="w-6 h-6 text-yellow-300" />
-            <h2 className="text-xl font-bold">{getGreeting()}!</h2>
+            {greeting.icon}
+            <h2 className="text-xl font-bold">{greeting.text}!</h2>
           </div>
           <p className="text-orange-100">
             {today.toLocaleDateString('tr-TR', { 

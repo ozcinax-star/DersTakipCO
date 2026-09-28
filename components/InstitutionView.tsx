@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Teacher, Student, Lesson, Institution, LessonStatus } from '../types';
 import { dbService } from '../services/db';
+import { getMonthStart, getNextMonthStart } from './dateUtils';
 import { Building2, Users, UserPlus, Edit2, Trash2, X, CheckCircle, AlertCircle, TrendingUp, Calendar, DollarSign, Search, Crown } from 'lucide-react';
 
 interface InstitutionViewProps {
@@ -29,13 +30,16 @@ export const InstitutionView: React.FC<InstitutionViewProps> = ({
 
   // Öğretmen istatistikleri
   const teacherStats = useMemo(() => {
+    const startOfMonth = getMonthStart();
+    const startOfNextMonth = getNextMonthStart();
     return teachers.map(teacher => {
       const teacherStudents = students.filter(s => s.teacherId === teacher.id);
       const teacherLessons = lessons.filter(l => l.teacherId === teacher.id);
       const completedLessons = teacherLessons.filter(l => l.status === LessonStatus.COMPLETED);
-      const thisMonth = new Date();
-      const startOfMonth = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1);
-      const monthlyLessons = completedLessons.filter(l => new Date(l.start) >= startOfMonth);
+      const monthlyLessons = completedLessons.filter(l => {
+        const date = new Date(l.start);
+        return date >= startOfMonth && date < startOfNextMonth;
+      });
       const monthlyEarnings = monthlyLessons.reduce((sum, l) => sum + l.price, 0);
       const totalEarnings = completedLessons.reduce((sum, l) => sum + l.price, 0);
 
@@ -51,26 +55,21 @@ export const InstitutionView: React.FC<InstitutionViewProps> = ({
     });
   }, [teachers, students, lessons, currentTeacher]);
 
-  // Genel istatistikler
+  // Genel istatistikler — öğretmen satırlarının toplamı. Hiçbir öğretmene bağlı
+  // olmayan (silinmiş öğretmenden kalan) kayıtlar sayılmaz, böylece toplamlar
+  // satırlarla her zaman tutarlıdır.
   const overallStats = useMemo(() => {
-    const totalStudents = students.length;
-    const totalLessons = lessons.length;
-    const completedLessons = lessons.filter(l => l.status === LessonStatus.COMPLETED);
-    const totalEarnings = completedLessons.reduce((sum, l) => sum + l.price, 0);
-    
-    const thisMonth = new Date();
-    const startOfMonth = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1);
-    const monthlyLessons = completedLessons.filter(l => new Date(l.start) >= startOfMonth);
-    const monthlyEarnings = monthlyLessons.reduce((sum, l) => sum + l.price, 0);
-
-    return {
-      totalTeachers: teachers.length,
-      totalStudents,
-      totalLessons,
-      totalEarnings,
-      monthlyEarnings
-    };
-  }, [teachers, students, lessons]);
+    return teacherStats.reduce(
+      (acc, stat) => ({
+        ...acc,
+        totalStudents: acc.totalStudents + stat.studentCount,
+        totalLessons: acc.totalLessons + stat.totalLessons,
+        totalEarnings: acc.totalEarnings + stat.totalEarnings,
+        monthlyEarnings: acc.monthlyEarnings + stat.monthlyEarnings
+      }),
+      { totalTeachers: teachers.length, totalStudents: 0, totalLessons: 0, totalEarnings: 0, monthlyEarnings: 0 }
+    );
+  }, [teacherStats, teachers]);
 
   // Yeni öğretmen ekle
   const handleAddTeacher = (e: React.FormEvent) => {
@@ -106,9 +105,10 @@ export const InstitutionView: React.FC<InstitutionViewProps> = ({
   };
 
   // Filtrelenmiş öğretmenler
+  const normalizedQuery = searchQuery.toLocaleLowerCase('tr-TR');
   const filteredStats = teacherStats.filter(stat =>
-    stat.teacher.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    stat.teacher.subject.toLowerCase().includes(searchQuery.toLowerCase())
+    stat.teacher.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery) ||
+    (stat.teacher.subject || '').toLocaleLowerCase('tr-TR').includes(normalizedQuery)
   );
 
   return (
@@ -213,7 +213,7 @@ export const InstitutionView: React.FC<InstitutionViewProps> = ({
         </div>
         
         <div className="divide-y divide-slate-100">
-          {filteredStats.map(({ teacher, studentCount, completedLessons, monthlyEarnings, totalEarnings, isAdmin }) => (
+          {filteredStats.map(({ teacher, studentCount, totalLessons, monthlyEarnings }) => (
             <div 
               key={teacher.id}
               className={`p-4 hover:bg-slate-50 transition-colors ${
@@ -245,7 +245,7 @@ export const InstitutionView: React.FC<InstitutionViewProps> = ({
                     <p className="text-xs text-slate-500">Öğrenci</p>
                   </div>
                   <div className="text-center hidden md:block">
-                    <p className="text-lg font-bold text-slate-800">{completedLessons}</p>
+                    <p className="text-lg font-bold text-slate-800">{totalLessons}</p>
                     <p className="text-xs text-slate-500">Ders</p>
                   </div>
                   <div className="text-center hidden md:block">
@@ -282,7 +282,7 @@ export const InstitutionView: React.FC<InstitutionViewProps> = ({
                   <p className="text-xs text-slate-500">Öğrenci</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-2">
-                  <p className="font-bold text-slate-800">{completedLessons}</p>
+                  <p className="font-bold text-slate-800">{totalLessons}</p>
                   <p className="text-xs text-slate-500">Ders</p>
                 </div>
                 <div className="bg-orange-50 rounded-lg p-2">
@@ -394,7 +394,7 @@ export const InstitutionView: React.FC<InstitutionViewProps> = ({
             
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-red-700">
-                <strong>âš ï¸ Dikkat:</strong> Bu iÅŸlem geri alÄ±namaz!
+                <strong>⚠️ Dikkat:</strong> Bu işlem geri alınamaz!
               </p>
               <ul className="text-sm text-red-600 mt-2 space-y-1">
                 <li>• Öğretmenin tüm öğrencileri silinecek</li>

@@ -38,15 +38,21 @@ export const LessonsListView: React.FC<LessonsListViewProps> = ({ lessons, stude
   };
 
   // Filter and sort lessons
+  const normalizedQuery = searchQuery.toLocaleLowerCase('tr-TR');
   const filteredLessons = lessons
     .filter(lesson => {
       const matchesSearch = getStudentName(lesson.studentId)
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase());
+        .toLocaleLowerCase('tr-TR')
+        .includes(normalizedQuery);
       const matchesStatus = statusFilter === 'ALL' || lesson.status === statusFilter;
       return matchesSearch && matchesStatus;
     })
     .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
+
+  // Arama/filtre ile gizlenen dersler toplu silmeye dahil edilmesin
+  const visibleSelectedIds = filteredLessons
+    .filter(l => selectedLessons.has(l.id))
+    .map(l => l.id);
 
   const toggleSelect = (lessonId: string) => {
     const newSelected = new Set(selectedLessons);
@@ -59,7 +65,7 @@ export const LessonsListView: React.FC<LessonsListViewProps> = ({ lessons, stude
   };
 
   const toggleSelectAll = () => {
-    if (selectedLessons.size === filteredLessons.length) {
+    if (visibleSelectedIds.length === filteredLessons.length) {
       setSelectedLessons(new Set());
     } else {
       setSelectedLessons(new Set(filteredLessons.map(l => l.id)));
@@ -107,13 +113,13 @@ export const LessonsListView: React.FC<LessonsListViewProps> = ({ lessons, stude
           <h1 className="text-2xl font-bold text-slate-800">Ders Listesi</h1>
           <p className="text-slate-500">Toplam {lessons.length} ders</p>
         </div>
-        {selectedLessons.size > 0 && (
+        {visibleSelectedIds.length > 0 && (
           <button
-            onClick={() => setDeleteConfirm(Array.from(selectedLessons))}
+            onClick={() => setDeleteConfirm(visibleSelectedIds)}
             className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
           >
             <Trash2 className="w-4 h-4 mr-2" />
-            Seçilenleri Sil ({selectedLessons.size})
+            Seçilenleri Sil ({visibleSelectedIds.length})
           </button>
         )}
       </div>
@@ -175,7 +181,7 @@ export const LessonsListView: React.FC<LessonsListViewProps> = ({ lessons, stude
                 <th className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
-                    checked={selectedLessons.size === filteredLessons.length && filteredLessons.length > 0}
+                    checked={visibleSelectedIds.length === filteredLessons.length && filteredLessons.length > 0}
                     onChange={toggleSelectAll}
                     className="rounded border-slate-300"
                   />
@@ -225,7 +231,7 @@ export const LessonsListView: React.FC<LessonsListViewProps> = ({ lessons, stude
                       {formatTime(lesson.start)} - {formatTime(lesson.end)}
                     </td>
                     <td className="px-4 py-3">{getStatusBadge(lesson.status)}</td>
-                    <td className="px-4 py-3 font-medium text-slate-800">₺{lesson.price}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">₺{(lesson.price || 0).toLocaleString('tr-TR')}</td>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => togglePaid(lesson.id, lesson.paid)}

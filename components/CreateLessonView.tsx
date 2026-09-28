@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Teacher, Student, Group, LessonStatus, EducationLevel } from '../types';
 import { dbService } from '../services/db';
 import { getDefaultPricing } from './SettingsView';
+import { toLocalDateKey, parseLocalDate } from './dateUtils';
 import { User, Users, Calendar, Clock, DollarSign, FileText, Check, Plus, X, Repeat, Settings } from 'lucide-react';
 
 interface CreateLessonViewProps {
@@ -31,7 +32,8 @@ export const CreateLessonView: React.FC<CreateLessonViewProps> = ({
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  // toISOString() UTC tarih verir; gece 00:00-03:00 arası dünün tarihi görünmesin diye yerel tarih
+  const [date, setDate] = useState(toLocalDateKey(new Date()));
   const [startTime, setStartTime] = useState('10:00');
   const [duration, setDuration] = useState(60);
   const [subject, setSubject] = useState(teacher.subject || '');
@@ -107,11 +109,13 @@ export const CreateLessonView: React.FC<CreateLessonViewProps> = ({
   };
 
   // Get dates for recurring lessons
+  const recurringCount = Math.min(52, Math.max(1, Math.floor(recurring.count) || 1));
+
   const getRecurringDates = (): Date[] => {
     const dates: Date[] = [];
-    const baseDate = new Date(date);
-    
-    for (let i = 0; i < recurring.count; i++) {
+    const baseDate = parseLocalDate(date);
+
+    for (let i = 0; i < recurringCount; i++) {
       const newDate = new Date(baseDate);
       switch (recurring.frequency) {
         case 'daily':
@@ -144,17 +148,23 @@ export const CreateLessonView: React.FC<CreateLessonViewProps> = ({
       studentsToCreate = selectedStudentIds;
     }
     
-    const dates = recurring.enabled ? getRecurringDates() : [new Date(date)];
+    // Tarih/saat alanı boşaltılmışsa geçersiz tarih oluşur ve kayıt çöker
+    const [hours, minutes] = startTime.split(':').map(Number);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(hours) || Number.isNaN(minutes)) {
+      alert('Lütfen geçerli bir tarih ve saat seçin.');
+      return;
+    }
+
+    const dates = recurring.enabled ? getRecurringDates() : [parseLocalDate(date)];
     let totalCreated = 0;
-    
+
     dates.forEach(lessonDate => {
       studentsToCreate.forEach(studentId => {
         const student = students.find(s => s.id === studentId);
-        const price = useStudentRate && student 
-          ? Math.round(student.hourlyRate * (duration / 60))
-          : (customPrice || 500);
-        
-        const [hours, minutes] = startTime.split(':').map(Number);
+        const price = !useStudentRate && customPrice !== null
+          ? Math.max(0, customPrice)
+          : Math.round((student ? student.hourlyRate : defaultPricing.defaultRate) * (duration / 60));
+
         const start = new Date(lessonDate);
         start.setHours(hours, minutes, 0, 0);
         
@@ -468,9 +478,9 @@ export const CreateLessonView: React.FC<CreateLessonViewProps> = ({
                 />
               </div>
               <div className="col-span-2 text-sm text-orange-600 bg-orange-50 px-3 py-2 rounded-lg">
-                {lessonType === 'individual' 
-                  ? `${recurring.count} ders oluşturulacak`
-                  : `${recurring.count * selectedStudentIds.length} ders oluşturulacak (${selectedStudentIds.length} öğrenci × ${recurring.count} tekrar)`
+                {lessonType === 'individual'
+                  ? `${recurringCount} ders oluşturulacak`
+                  : `${recurringCount * selectedStudentIds.length} ders oluşturulacak (${selectedStudentIds.length} öğrenci × ${recurringCount} tekrar)`
                 }
               </div>
             </div>
@@ -533,8 +543,8 @@ export const CreateLessonView: React.FC<CreateLessonViewProps> = ({
                     type="number"
                     min={0}
                     step={50}
-                    value={customPrice || ''}
-                    onChange={(e) => setCustomPrice(Number(e.target.value))}
+                    value={customPrice ?? ''}
+                    onChange={(e) => setCustomPrice(e.target.value === '' ? null : Number(e.target.value))}
                     placeholder={`Varsayılan: ${defaultPricing.defaultRate}`}
                     className="w-full pl-8 pr-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
                   />
@@ -551,7 +561,9 @@ export const CreateLessonView: React.FC<CreateLessonViewProps> = ({
                 <div>
                   <p className="text-orange-100 text-sm">{getPriceLabel()}</p>
                   <p className="text-xs text-orange-200 mt-1">
-                    {duration} dakika • {date}
+                    {duration} dakika • {/^\d{4}-\d{2}-\d{2}$/.test(date)
+                      ? parseLocalDate(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'short' })
+                      : '-'}
                   </p>
                 </div>
                 <div className="text-right">

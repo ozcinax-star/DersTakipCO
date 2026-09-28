@@ -82,6 +82,7 @@ const App: React.FC = () => {
           console.error('Eski veri aktarımı başarısız', err);
         }
       }
+      dbService.repairOrphans();
       refreshData();
       setIsStarting(false);
     };
@@ -238,6 +239,11 @@ const App: React.FC = () => {
                   {migrationNotice.counts.teachers} profil, {migrationNotice.counts.students} öğrenci, {migrationNotice.counts.lessons} ders
                   {migrationNotice.counts.groups > 0 && `, ${migrationNotice.counts.groups} grup`} önceki DersTakipCO uygulamasından alındı.
                 </p>
+                {!!migrationNotice.recoveredProfiles && (
+                  <p className="mt-1">
+                    Eski sürümdeki yedek yükleme hatası yüzünden görünmeyen kayıtlar "Kurtarılan Profil" adıyla geri getirildi.
+                  </p>
+                )}
               </div>
               <button onClick={() => setMigrationNotice(null)} className="text-emerald-600 hover:text-emerald-800" aria-label="Kapat">
                 <X size={18} />

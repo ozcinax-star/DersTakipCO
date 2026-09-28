@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Teacher, Student, Lesson, WeeklyAvailability, TimeSlot, SuggestedLesson, LessonStatus } from '../types';
 import { Calendar, Clock, Zap, Plus, Check, AlertCircle, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { getWeekStart } from './dateUtils';
 
 interface SmartPlannerViewProps {
   teacher: Teacher;
@@ -21,7 +22,33 @@ const DAY_LABELS: Record<string, string> = {
   sunday: 'Pazar'
 };
 
+const DAY_SHORT_LABELS: Record<string, string> = {
+  monday: 'Pzt',
+  tuesday: 'Sal',
+  wednesday: 'Çar',
+  thursday: 'Per',
+  friday: 'Cum',
+  saturday: 'Cmt',
+  sunday: 'Paz'
+};
+
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 8); // 08:00 - 22:00
+
+const EMPTY_AVAILABILITY: WeeklyAvailability = {
+  monday: [],
+  tuesday: [],
+  wednesday: [],
+  thursday: [],
+  friday: [],
+  saturday: [],
+  sunday: []
+};
+
+// JS getDay(): 0=Pazar ... 6=Cumartesi → DAYS dizisinde Pazartesi 0. indekstir
+const dayKeyOf = (date: Date) => DAYS[(date.getDay() + 6) % 7];
+
+const lessonHours = (lesson: Lesson) =>
+  Math.max(0, (new Date(lesson.end).getTime() - new Date(lesson.start).getTime()) / 3600000);
 
 export const SmartPlannerView: React.FC<SmartPlannerViewProps> = ({
   teacher,
@@ -30,50 +57,43 @@ export const SmartPlannerView: React.FC<SmartPlannerViewProps> = ({
   onUpdateTeacher,
   onCreateLesson
 }) => {
-  const [availability, setAvailability] = useState<WeeklyAvailability>(
-    teacher.availability || {
-      monday: [],
-      tuesday: [],
-      wednesday: [],
-      thursday: [],
-      friday: [],
-      saturday: [],
-      sunday: []
-    }
-  );
+  // Eski kayıtlarda bazı günler eksik olabilir; eksik günleri boş diziyle tamamla
+  const [availability, setAvailability] = useState<WeeklyAvailability>({
+    ...EMPTY_AVAILABILITY,
+    ...(teacher.availability || {})
+  });
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Uygunluk saatlerini güncelle
+  // Uygunluk saatlerini güncelle (hızlı art arda tıklamalarda seçim kaybolmasın diye önceki duruma göre hesaplanır)
   const toggleHour = (day: typeof DAYS[number], hour: number) => {
-    const timeStr = `${hour.toString().padStart(2, '0')}:00`;
-    const endStr = `${(hour + 1).toString().padStart(2, '0')}:00`;
-    
-    const daySlots = [...availability[day]];
-    const existingIndex = daySlots.findIndex(slot => slot.start === timeStr);
-    
-    if (existingIndex >= 0) {
-      daySlots.splice(existingIndex, 1);
-    } else {
-      daySlots.push({ start: timeStr, end: endStr });
-      daySlots.sort((a, b) => a.start.localeCompare(b.start));
-    }
-    
-    // Ardışık saatleri birleştir
-    const mergedSlots: TimeSlot[] = [];
-    for (const slot of daySlots) {
-      const last = mergedSlots[mergedSlots.length - 1];
-      if (last && last.end === slot.start) {
-        last.end = slot.end;
-      } else {
-        mergedSlots.push({ ...slot });
+    setAvailability(prev => {
+      // Birleştirilmiş aralıkları tek tek saatlere aç, seçimi değiştir, sonra yeniden birleştir
+      const selectedHours = new Set<number>();
+      for (const slot of prev[day] || []) {
+        const startHour = parseInt(slot.start.split(':')[0]);
+        const endHour = parseInt(slot.end.split(':')[0]);
+        for (let h = startHour; h < endHour; h++) selectedHours.add(h);
       }
-    }
-    
-    setAvailability(prev => ({
-      ...prev,
-      [day]: mergedSlots
-    }));
+      if (selectedHours.has(hour)) {
+        selectedHours.delete(hour);
+      } else {
+        selectedHours.add(hour);
+      }
+
+      const mergedSlots: TimeSlot[] = [];
+      for (const h of [...selectedHours].sort((a, b) => a - b)) {
+        const start = `${h.toString().padStart(2, '0')}:00`;
+        const end = `${(h + 1).toString().padStart(2, '0')}:00`;
+        const last = mergedSlots[mergedSlots.length - 1];
+        if (last && last.end === start) {
+          last.end = end;
+        } else {
+          mergedSlots.push({ start, end });
+        }
+      }
+      return { ...prev, [day]: mergedSlots };
+    });
   };
 
   const isHourSelected = (day: typeof DAYS[number], hour: number) => {
@@ -85,19 +105,28 @@ export const SmartPlannerView: React.FC<SmartPlannerViewProps> = ({
     });
   };
 
-  // Mevcut dersleri kontrol et
+  // Bu haftaki (iptal edilmemiş) dersler
+  const thisWeekLessons = useMemo(() => {
+    const weekStart = getWeekStart();
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 7);
+    return lessons.filter(l => {
+      const lessonDate = new Date(l.start);
+      return lessonDate >= weekStart && lessonDate < weekEnd && l.status !== LessonStatus.CANCELLED;
+    });
+  }, [lessons]);
+
+  // Mevcut dersleri kontrol et (sadece bu hafta; ders o saat dilimiyle çakışıyorsa dolu)
   const isHourBooked = (day: typeof DAYS[number], hour: number) => {
-    const dayIndex = DAYS.indexOf(day);
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay() + 1 + dayIndex);
-    
-    return lessons.some(lesson => {
-      const lessonDate = new Date(lesson.start);
-      const lessonHour = lessonDate.getHours();
-      return lessonDate.getDay() === (dayIndex + 1) % 7 && 
-             lessonHour === hour &&
-             lesson.status === LessonStatus.SCHEDULED;
+    return thisWeekLessons.some(lesson => {
+      const start = new Date(lesson.start);
+      if (dayKeyOf(start) !== day) return false;
+      const end = new Date(lesson.end);
+      const slotStart = new Date(start);
+      slotStart.setHours(hour, 0, 0, 0);
+      const slotEnd = new Date(slotStart);
+      slotEnd.setHours(hour + 1);
+      return start < slotEnd && end > slotStart;
     });
   };
 
@@ -121,22 +150,18 @@ export const SmartPlannerView: React.FC<SmartPlannerViewProps> = ({
     }, 0);
   }, [availability]);
 
-  // Dolu saat sayısı
+  // Dolu saat sayısı (bu haftaki derslerin toplam süresi)
   const bookedHours = useMemo(() => {
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay() + 1);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
+    const total = thisWeekLessons.reduce((sum, l) => sum + lessonHours(l), 0);
+    return Math.round(total * 10) / 10;
+  }, [thisWeekLessons]);
 
-    return lessons.filter(l => {
-      const lessonDate = new Date(l.start);
-      return lessonDate >= weekStart && lessonDate < weekEnd && l.status === LessonStatus.SCHEDULED;
-    }).length;
-  }, [lessons]);
-
-  // Boş saat analizi
-  const freeHours = totalAvailableHours - bookedHours;
+  // Boş kapasite: müsait işaretlenmiş ama bu hafta ders olmayan saatler
+  const freeHours = useMemo(() => {
+    return DAYS.reduce((total, day) => {
+      return total + HOURS.filter(hour => isHourSelected(day, hour) && !isHourBooked(day, hour)).length;
+    }, 0);
+  }, [availability, thisWeekLessons]);
 
   // Akıllı ders önerileri
   const suggestions = useMemo((): SuggestedLesson[] => {
@@ -146,8 +171,10 @@ export const SmartPlannerView: React.FC<SmartPlannerViewProps> = ({
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
+    const weekStart = getWeekStart();
+
     students.forEach(student => {
-      const studentLessons = lessons.filter(l => l.studentId === student.id);
+      const studentLessons = lessons.filter(l => l.studentId === student.id && l.status !== LessonStatus.CANCELLED);
       const recentLessons = studentLessons.filter(l => new Date(l.start) > thirtyDaysAgo);
       
       if (recentLessons.length === 0 && studentLessons.length > 0) {
@@ -158,7 +185,7 @@ export const SmartPlannerView: React.FC<SmartPlannerViewProps> = ({
         
         if (lastLesson) {
           const lastDate = new Date(lastLesson.start);
-          const dayName = DAYS[(lastDate.getDay() + 6) % 7];
+          const dayName = dayKeyOf(lastDate);
           const hour = lastDate.getHours();
           
           // Aynı gün ve saatte uygunluk var mı kontrol et
@@ -176,30 +203,26 @@ export const SmartPlannerView: React.FC<SmartPlannerViewProps> = ({
       }
       
       // Düzenli ders alan ama bu hafta dersi olmayan öğrenciler
-      const thisWeekLessons = studentLessons.filter(l => {
-        const date = new Date(l.start);
-        const now = new Date();
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay() + 1);
-        return date >= weekStart;
-      });
-      
-      if (thisWeekLessons.length === 0 && recentLessons.length >= 2) {
+      const studentThisWeek = studentLessons.filter(l => new Date(l.start) >= weekStart);
+
+      if (studentThisWeek.length === 0 && recentLessons.length >= 2) {
         // En sık ders aldığı gün ve saati bul
-        const dayCount: Record<string, number> = {};
+        const slotCount: Record<string, number> = {};
         studentLessons.forEach(l => {
           const date = new Date(l.start);
-          const day = DAYS[(date.getDay() + 6) % 7];
-          dayCount[day] = (dayCount[day] || 0) + 1;
+          const key = `${dayKeyOf(date)}|${date.getHours()}`;
+          slotCount[key] = (slotCount[key] || 0) + 1;
         });
-        
-        const mostFrequentDay = Object.entries(dayCount).sort((a, b) => b[1] - a[1])[0];
-        if (mostFrequentDay && !result.find(r => r.studentId === student.id)) {
+
+        const mostFrequent = Object.entries(slotCount).sort((a, b) => b[1] - a[1])[0];
+        if (mostFrequent && !result.find(r => r.studentId === student.id)) {
+          const [day, hourStr] = mostFrequent[0].split('|');
+          const hour = parseInt(hourStr);
           result.push({
             studentId: student.id,
             studentName: student.name,
-            suggestedDay: DAY_LABELS[mostFrequentDay[0]],
-            suggestedTime: '14:00',
+            suggestedDay: DAY_LABELS[day],
+            suggestedTime: `${hour.toString().padStart(2, '0')}:00`,
             duration: 60,
             reason: 'Bu hafta henüz dersi yok'
           });
@@ -213,12 +236,17 @@ export const SmartPlannerView: React.FC<SmartPlannerViewProps> = ({
   // Öneriyi kabul et ve ders oluştur
   const acceptSuggestion = (suggestion: SuggestedLesson) => {
     const now = new Date();
-    const dayIndex = Object.keys(DAY_LABELS).findIndex(k => DAY_LABELS[k] === suggestion.suggestedDay);
-    const targetDate = new Date(now);
-    targetDate.setDate(now.getDate() - now.getDay() + 1 + dayIndex);
-    
+    const dayIndex = DAYS.findIndex(k => DAY_LABELS[k] === suggestion.suggestedDay);
+    if (dayIndex === -1) return;
+    const targetDate = getWeekStart(now);
+    targetDate.setDate(targetDate.getDate() + dayIndex);
+
     const [hours, minutes] = suggestion.suggestedTime.split(':').map(Number);
     targetDate.setHours(hours, minutes, 0, 0);
+    // Bu haftaki gün/saat geçtiyse bir sonraki haftaya planla
+    if (targetDate <= now) {
+      targetDate.setDate(targetDate.getDate() + 7);
+    }
     
     const endDate = new Date(targetDate);
     endDate.setMinutes(endDate.getMinutes() + suggestion.duration);
@@ -312,7 +340,7 @@ export const SmartPlannerView: React.FC<SmartPlannerViewProps> = ({
                 <th className="p-2 text-left text-sm font-medium text-slate-600 w-20">Saat</th>
                 {DAYS.map(day => (
                   <th key={day} className="p-2 text-center text-sm font-medium text-slate-600">
-                    {DAY_LABELS[day].slice(0, 3)}
+                    {DAY_SHORT_LABELS[day]}
                   </th>
                 ))}
               </tr>

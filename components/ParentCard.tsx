@@ -158,7 +158,7 @@ export const ParentCard: React.FC<ParentCardProps> = ({
     // Yaklaşan ders
     ctx.fillStyle = '#1E293B';
     ctx.font = 'bold 18px Arial';
-    ctx.fillText('â° YaklaÅŸan Ders', 50, 560);
+    ctx.fillText('⏰ Yaklaşan Ders', 50, 560);
 
     ctx.fillStyle = '#64748B';
     ctx.font = '14px Arial';
@@ -178,7 +178,7 @@ export const ParentCard: React.FC<ParentCardProps> = ({
     ctx.fillStyle = '#F59E0B';
     ctx.font = '12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('âš ï¸ Bu kart sadece bilgi amaÃ§lÄ±dÄ±r', width / 2, 660);
+    ctx.fillText('⚠️ Bu kart sadece bilgi amaçlıdır', width / 2, 660);
 
     // Alt bilgi
     ctx.fillStyle = '#94A3B8';

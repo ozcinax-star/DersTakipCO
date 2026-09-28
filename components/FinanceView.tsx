@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Lesson, Student, Group, ReportTemplate, Teacher, LessonStatus } from '../types';
 import { TrendingUp, TrendingDown, Users, BookOpen, Calendar, ChevronDown, Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { parseLocalDate } from './dateUtils';
 
 interface FinanceViewProps {
   lessons: Lesson[];
@@ -86,9 +87,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ lessons, students, gro
   // Chart data for monthly breakdown
   const monthlyChartData = useMemo(() => {
     const months: { [key: string]: { revenue: number; lessons: number } } = {};
-    
+    const now = new Date();
+
     lessons.forEach(lesson => {
       const date = new Date(lesson.start);
+      // Gelecek aylardaki planlı dersler son 6 ayı grafikten itmesin
+      if (date > now) return;
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       
       if (!months[monthKey]) {
@@ -105,7 +109,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ lessons, students, gro
       .sort((a, b) => a[0].localeCompare(b[0]))
       .slice(-6)
       .map(([month, data]) => ({
-        month: new Date(month + '-01').toLocaleDateString('tr-TR', { month: 'short' }),
+        // new Date('YYYY-MM-01') UTC kabul eder; yerel tarih olarak çöz
+        month: parseLocalDate(`${month}-01`).toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' }),
         ...data
       }));
   }, [lessons]);
@@ -137,7 +142,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ lessons, students, gro
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Raporlar</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Finans</h1>
           <p className="text-slate-500">Finansal özet ve istatistikler</p>
         </div>
         <div className="relative">

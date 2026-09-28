@@ -2,6 +2,7 @@ import React from 'react';
 import { Teacher, Student, Lesson, LessonStatus } from '../types';
 import { BookOpen, Users, TrendingUp, Clock, CheckCircle, XCircle, Calendar } from 'lucide-react';
 import { TodayPanel } from './TodayPanel';
+import { getMonthStart, getNextMonthStart } from './dateUtils';
 
 interface DashboardProps {
   teacher: Teacher;
@@ -12,13 +13,14 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ teacher, lessons, students, onNavigate }) => {
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  
+  const startOfMonth = getMonthStart(now);
+  // Ayın son günündeki dersler de dahil olsun diye bir sonraki ayın başını "<" ile kullan
+  const startOfNextMonth = getNextMonthStart(now);
+
   // This month's lessons
   const thisMonthLessons = lessons.filter(l => {
     const lessonDate = new Date(l.start);
-    return lessonDate >= startOfMonth && lessonDate <= endOfMonth;
+    return lessonDate >= startOfMonth && lessonDate < startOfNextMonth;
   });
   
   // All completed lessons (for total earnings)
@@ -89,14 +91,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ teacher, lessons, students
       bgLight: 'bg-emerald-50',
     },
     {
-      label: 'Planlanan Dersler',
+      label: 'Planlanan (Bu Ay)',
       value: scheduledLessons.length,
       icon: <Clock className="w-5 h-5" />,
       color: 'bg-orange-500',
       bgLight: 'bg-orange-50',
     },
     {
-      label: 'İptal Edilen',
+      label: 'İptal (Bu Ay)',
       value: cancelledLessons.length,
       icon: <XCircle className="w-5 h-5" />,
       color: 'bg-red-500',
@@ -110,7 +112,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ teacher, lessons, students
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">
-            Hoş geldin, {teacher.name.split(' ')[0]}! 👋
+            Hoş geldin, {teacher.name.trim().split(' ')[0]}! 👋
           </h1>
           <p className="text-slate-500 mt-1">
             {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -195,7 +197,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ teacher, lessons, students
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium text-slate-800">₺{lesson.price}</p>
+                    <p className="font-medium text-slate-800">₺{lesson.price.toLocaleString('tr-TR')}</p>
                   </div>
                 </div>
               ))}

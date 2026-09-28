@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Teacher, Student, Lesson, LessonStatus, StudentPerformance } from '../types';
 import { Target, TrendingUp, Clock, DollarSign, Award, AlertTriangle, CheckCircle, Users, BarChart3 } from 'lucide-react';
+import { getMonthStart, getNextMonthStart, getWeekStart } from './dateUtils';
 
 interface GoalsViewProps {
   teacher: Teacher;
@@ -20,29 +21,32 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
 
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const daysInMonth = endOfMonth.getDate();
+  const startOfMonth = getMonthStart(now);
+  const startOfNextMonth = getNextMonthStart(now);
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysPassed = now.getDate();
-  const daysRemaining = daysInMonth - daysPassed;
+  // Bugün de hâlâ ders verilebilir; kalan günlere bugünü dahil et
+  const daysRemaining = daysInMonth - daysPassed + 1;
 
-  // Bu ayki kazanç
+  // Bu ayki kazanç (tamamlanan dersler; ayın son günü dahil)
   const thisMonthEarnings = useMemo(() => {
     return lessons
       .filter(l => {
         const date = new Date(l.start);
-        return date >= startOfMonth && date <= endOfMonth && l.status === LessonStatus.COMPLETED;
+        return date >= startOfMonth && date < startOfNextMonth && l.status === LessonStatus.COMPLETED;
       })
-      .reduce((sum, l) => sum + l.price, 0);
+      .reduce((sum, l) => sum + (Number(l.price) || 0), 0);
   }, [lessons]);
 
   // Hedefe kalan
   const remainingToGoal = monthlyGoal - thisMonthEarnings;
-  const progressPercent = Math.min(100, (thisMonthEarnings / monthlyGoal) * 100);
+  const progressPercent = monthlyGoal > 0
+    ? Math.min(100, (thisMonthEarnings / monthlyGoal) * 100)
+    : 0;
 
   // Gerekli haftalık saat
   const weeksRemaining = Math.ceil(daysRemaining / 7);
-  const hoursNeededPerWeek = remainingToGoal > 0 
+  const hoursNeededPerWeek = remainingToGoal > 0 && avgHourlyRate > 0
     ? Math.ceil(remainingToGoal / avgHourlyRate / Math.max(1, weeksRemaining))
     : 0;
 
@@ -55,42 +59,48 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
       const studentLessons = lessons.filter(l => l.studentId === student.id);
       const completedLessons = studentLessons.filter(l => l.status === LessonStatus.COMPLETED);
       const cancelledLessons = studentLessons.filter(l => l.status === LessonStatus.CANCELLED);
-      
-      // Katılım oranı
+
+      // Katılım oranı: gerçekleşen (gelinmiş) dersler / tamamlanan + iptal edilen dersler
       const attendedLessons = completedLessons.filter(l => l.attendanceStatus !== 'absent');
-      const attendanceRate = completedLessons.length > 0 
-        ? (attendedLessons.length / completedLessons.length) * 100 
-        : 100;
-      
-      // Ortalama katılım skoru
+      const decidedLessons = completedLessons.length + cancelledLessons.length;
+      const attendanceRate = decidedLessons > 0
+        ? (attendedLessons.length / decidedLessons) * 100
+        : 0;
+
+      // Ortalama ders içi katılım skoru (1-5 puan → 0-100)
       const participationScores = completedLessons
         .filter(l => l.participationScore)
         .map(l => l.participationScore!);
-      const avgParticipation = participationScores.length > 0
+      const hasParticipation = participationScores.length > 0;
+      const avgParticipation = hasParticipation
         ? participationScores.reduce((a, b) => a + b, 0) / participationScores.length * 20
-        : 50;
-      
-      // Devamlılık skoru - son 3 ayda düzenlilik
+        : 0;
+
+      // Devamlılık skoru - son 3 ayda (≈13 hafta) ders yapılan hafta sayısı
       const threeMonthsAgo = new Date();
       threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
       const recentLessons = completedLessons.filter(l => new Date(l.start) > threeMonthsAgo);
-      
-      // Haftalık ders sayısına göre devamlılık
+
       const weeksWithLessons = new Set(
-        recentLessons.map(l => {
-          const date = new Date(l.start);
-          return `${date.getFullYear()}-${Math.floor(date.getDate() / 7)}`;
-        })
+        recentLessons.map(l => getWeekStart(new Date(l.start)).getTime())
       ).size;
-      const continuityScore = Math.min(100, (weeksWithLessons / 12) * 100);
-      
-      // Final performans skoru (ağırlıklı ortalama)
-      const performanceScore = Math.round(
-        (attendanceRate * 0.3) +
-        (avgParticipation * 0.3) +
-        (continuityScore * 0.25) +
-        (Math.min(100, completedLessons.length * 5) * 0.15)
-      );
+      const continuityScore = Math.min(100, (weeksWithLessons / 13) * 100);
+
+      const lessonCountScore = Math.min(100, completedLessons.length * 5);
+
+      // Final performans skoru (ağırlıklı ortalama).
+      // Ders içi katılım puanı girilmemişse o ağırlık diğer kalemlere dağıtılır;
+      // hiç dersi olmayan öğrenci 0 puan alır.
+      const weighted = [
+        { value: attendanceRate, weight: 0.3 },
+        ...(hasParticipation ? [{ value: avgParticipation, weight: 0.3 }] : []),
+        { value: continuityScore, weight: 0.25 },
+        { value: lessonCountScore, weight: 0.15 }
+      ];
+      const totalWeight = weighted.reduce((sum, w) => sum + w.weight, 0);
+      const performanceScore = decidedLessons === 0
+        ? 0
+        : Math.round(weighted.reduce((sum, w) => sum + w.value * w.weight, 0) / totalWeight);
       
       return {
         studentId: student.id,
@@ -290,14 +300,18 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-3">
-                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreColor(perf.performanceScore)}`}>
-                      {perf.performanceScore}/100
+                  {perf.completedLessons + perf.cancelledLessons === 0 ? (
+                    <span className="text-xs text-slate-400">Henüz ders verisi yok</span>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreColor(perf.performanceScore)}`}>
+                        {perf.performanceScore}/100
+                      </div>
+                      <span className={`text-xs ${getScoreColor(perf.performanceScore).split(' ')[0]}`}>
+                        {getScoreLabel(perf.performanceScore)}
+                      </span>
                     </div>
-                    <span className={`text-xs ${getScoreColor(perf.performanceScore).split(' ')[0]}`}>
-                      {getScoreLabel(perf.performanceScore)}
-                    </span>
-                  </div>
+                  )}
                 </div>
                 
                 {/* Expanded Details */}
@@ -362,7 +376,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
         <h3 className="font-medium text-blue-800 mb-2">💡 Performans Skoru Nasıl Hesaplanır?</h3>
         <ul className="text-sm text-blue-700 space-y-1">
           <li>• <strong>Katılım Oranı (%30):</strong> Derse katılma yüzdesi</li>
-          <li>• <strong>Ders İçi Katılım (%30):</strong> Derste aktif olma skoru</li>
+          <li>• <strong>Ders İçi Katılım (%30):</strong> Derste aktif olma skoru (puan girilmemişse diğer kalemlere dağıtılır)</li>
           <li>• <strong>Devamlılık (%25):</strong> Son 3 ayda düzenli ders alma</li>
           <li>• <strong>Toplam Ders (%15):</strong> Tamamlanan ders sayısı</li>
         </ul>

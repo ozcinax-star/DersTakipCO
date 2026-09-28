@@ -1,12 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { Teacher, Student, Lesson, LessonStatus } from '../types';
 import { FileText, Download, User, Users, Calendar, TrendingUp, Filter, Printer, CheckCircle } from 'lucide-react';
+import { parseLocalDate } from './dateUtils';
 
 interface ReportsViewProps {
   teacher: Teacher;
   students: Student[];
   lessons: Lesson[];
 }
+
+// Rapor HTML'ine eklenen kullanıcı metinlerini kaçışla (ör. notlarda "<" veya "&" geçebilir)
+const esc = (value?: string | null) =>
+  (value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string));
 
 type ReportType = 'student' | 'period' | 'financial';
 type ReportPeriod = 'month' | 'quarter' | 'year' | 'custom';
@@ -29,7 +34,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     notes: true
   });
 
-  // Tarih aralığını hesapla
+  // Tarih aralığını hesapla. "end" raporda gösterilen son gündür;
+  // filtrelemede son günün tamamı dahil olsun diye "endExclusive" (ertesi gün 00:00) kullanılır.
   const dateRange = useMemo(() => {
     const now = new Date();
     let start: Date, end: Date;
@@ -39,32 +45,35 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         start = new Date(now.getFullYear(), now.getMonth(), 1);
         end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
         break;
-      case 'quarter':
+      case 'quarter': {
         const quarter = Math.floor(now.getMonth() / 3);
         start = new Date(now.getFullYear(), quarter * 3, 1);
         end = new Date(now.getFullYear(), quarter * 3 + 3, 0);
         break;
+      }
       case 'year':
         start = new Date(now.getFullYear(), 0, 1);
         end = new Date(now.getFullYear(), 11, 31);
         break;
       case 'custom':
-        start = customStartDate ? new Date(customStartDate) : new Date(now.getFullYear(), now.getMonth(), 1);
-        end = customEndDate ? new Date(customEndDate) : now;
+        // new Date('YYYY-MM-DD') UTC kabul eder; yerel gün olarak çöz
+        start = customStartDate ? parseLocalDate(customStartDate) : new Date(now.getFullYear(), now.getMonth(), 1);
+        end = customEndDate ? parseLocalDate(customEndDate) : new Date(now.getFullYear(), now.getMonth(), now.getDate());
         break;
       default:
         start = new Date(now.getFullYear(), now.getMonth(), 1);
-        end = now;
+        end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     }
 
-    return { start, end };
+    const endExclusive = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1);
+    return { start, end, endExclusive };
   }, [period, customStartDate, customEndDate]);
 
   // Filtrelenmiş dersler
   const filteredLessons = useMemo(() => {
     return lessons.filter(l => {
       const lessonDate = new Date(l.start);
-      const inDateRange = lessonDate >= dateRange.start && lessonDate <= dateRange.end;
+      const inDateRange = lessonDate >= dateRange.start && lessonDate < dateRange.endExclusive;
       const matchesStudent = !selectedStudent || l.studentId === selectedStudent;
       return inDateRange && matchesStudent;
     });
@@ -131,16 +140,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       <body>
         <div class="header">
           <h1>DersTakipCO</h1>
-          <p>${reportType === 'student' && student ? `${student.name} - Öğrenci Raporu` : 'Dönemsel Rapor'}</p>
+          <p>${reportType === 'student' && student ? `${esc(student.name)} - Öğrenci Raporu` : 'Dönemsel Rapor'}</p>
           <p>${dateRange.start.toLocaleDateString('tr-TR')} - ${dateRange.end.toLocaleDateString('tr-TR')}</p>
         </div>
 
         ${student && includeSections.summary ? `
           <div class="student-info">
-            <h3>${student.name}</h3>
-            <p><strong>Sınıf:</strong> ${student.gradeLevel || 'Belirtilmemiş'}</p>
-            <p><strong>Veli:</strong> ${student.parentName || 'Belirtilmemiş'}</p>
-            <p><strong>İletişim:</strong> ${student.contactNumber || 'Belirtilmemiş'}</p>
+            <h3>${esc(student.name)}</h3>
+            <p><strong>Sınıf:</strong> ${esc(student.gradeLevel) || 'Belirtilmemiş'}</p>
+            <p><strong>Veli:</strong> ${esc(student.parentName) || 'Belirtilmemiş'}</p>
+            <p><strong>İletişim:</strong> ${esc(student.contactNumber) || 'Belirtilmemiş'}</p>
             <p><strong>Saat Ücreti:</strong> ₺${student.hourlyRate}</p>
           </div>
         ` : ''}
@@ -202,13 +211,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       <tr>
                         <td>${date.toLocaleDateString('tr-TR')}</td>
                         <td>${date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</td>
-                        ${!selectedStudent ? `<td>${lessonStudent?.name || 'Bilinmiyor'}</td>` : ''}
-                        <td>${lesson.subject || '-'}</td>
+                        ${!selectedStudent ? `<td>${esc(lessonStudent?.name) || 'Bilinmiyor'}</td>` : ''}
+                        <td>${esc(lesson.subject) || '-'}</td>
                         <td class="status-${lesson.status.toLowerCase()}">${
                           lesson.status === 'COMPLETED' ? 'Tamamlandı' :
                           lesson.status === 'CANCELLED' ? 'İptal' : 'Planlandı'
                         }</td>
-                        <td>₺${lesson.price}</td>
+                        <td>₺${(lesson.price || 0).toLocaleString('tr-TR')}</td>
                       </tr>
                     `;
                   }).join('')}
@@ -243,28 +252,47 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
         ${includeSections.notes && student?.notes ? `
           <div class="section">
-            <h2>ðŸ“ Notlar</h2>
-            <p>${student.notes}</p>
+            <h2>📝 Notlar</h2>
+            <p>${esc(student.notes)}</p>
           </div>
         ` : ''}
 
         <div class="footer">
           <p>Bu rapor DersTakipCO tarafından ${new Date().toLocaleDateString('tr-TR')} tarihinde oluşturulmuştur.</p>
-          <p>${teacher.name} - ${teacher.subject}</p>
+          <p>${esc(teacher.name)} - ${esc(teacher.subject)}</p>
         </div>
       </body>
       </html>
     `;
 
-    // Yeni pencerede aç ve yazdır
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(reportHTML);
-      printWindow.document.close();
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
+    // Gizli bir iframe içinde yazdır. Masaüstü uygulaması yeni pencere açmaya izin
+    // vermediği için window.open kullanılmaz; yazdırma penceresinden "PDF olarak kaydet" seçilebilir.
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentDocument;
+    const frameWin = iframe.contentWindow;
+    if (!frameDoc || !frameWin) {
+      iframe.remove();
+      return;
     }
+    frameDoc.open();
+    frameDoc.write(reportHTML);
+    frameDoc.close();
+
+    setTimeout(() => {
+      frameWin.focus();
+      frameWin.print();
+      // print() yazdırma penceresi kapanana kadar bekler; ardından temizle
+      setTimeout(() => iframe.remove(), 1000);
+    }, 250);
   };
 
   return (
@@ -461,7 +489,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         
         {reportType === 'student' && !selectedStudent && (
           <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200 text-amber-700 text-sm">
-            âš ï¸ Ã–ÄŸrenci raporu iÃ§in bir Ã¶ÄŸrenci seÃ§in
+            ⚠️ Öğrenci raporu için bir öğrenci seçin
           </div>
         )}
       </div>

@@ -45,6 +45,7 @@ export interface MigrationInfo {
   date: string;
   source: string;
   counts: { teachers: number; students: number; lessons: number; groups: number };
+  recoveredProfiles?: number;
 }
 
 export interface RestoreResult {
@@ -150,7 +151,7 @@ class DBService {
       contactNumber: data.contactNumber,
       email: data.email,
       notes: data.notes,
-      hourlyRate: data.hourlyRate || 500,
+      hourlyRate: data.hourlyRate ?? 500,
       color: data.color || STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
       groupIds: data.groupIds || [],
       createdAt: Date.now(),
@@ -443,10 +444,12 @@ class DBService {
       }
     }
 
+    const recoveredProfiles = this.repairOrphans();
     const info: MigrationInfo = {
       date: new Date().toISOString(),
       source,
-      counts: { teachers: teachers.length, students: students.length, lessons: lessons.length, groups: groups.length },
+      counts: { teachers: teachers.length + recoveredProfiles, students: students.length, lessons: lessons.length, groups: groups.length },
+      recoveredProfiles,
     };
     localStorage.setItem(MIGRATION_KEY, JSON.stringify(info));
     this.scheduleAutoBackup();
@@ -458,6 +461,37 @@ class DBService {
     if (!localStorage.getItem(MIGRATION_KEY)) {
       localStorage.setItem(MIGRATION_KEY, JSON.stringify({ date: new Date().toISOString(), source: 'yok', counts: { teachers: 0, students: 0, lessons: 0, groups: 0 } }));
     }
+  }
+
+  // Eski sürümdeki yedek yükleme hatası, öğretmeni kaydetmeden öğrenci ve dersleri yazıyordu.
+  // Profili olmayan bu kayıtlar görünmez kalır; her biri için bir "Kurtarılan Profil" oluşturulur.
+  repairOrphans(): number {
+    const teachers = this.getTeachers();
+    const known = new Set(teachers.map(t => t.id));
+    const students = this.getAllStudents();
+    const lessons = this.getAllLessons();
+    const groups = this.getAllGroups();
+
+    const orphanIds = new Set<string>();
+    [...students, ...lessons, ...groups].forEach(r => {
+      if (r.teacherId && !known.has(r.teacherId)) orphanIds.add(r.teacherId);
+    });
+    if (orphanIds.size === 0) return 0;
+
+    let n = 0;
+    orphanIds.forEach(id => {
+      n++;
+      const studentCount = students.filter(s => s.teacherId === id).length;
+      const lessonCount = lessons.filter(l => l.teacherId === id).length;
+      teachers.push({
+        id,
+        name: orphanIds.size > 1 ? `Kurtarılan Profil ${n}` : 'Kurtarılan Profil',
+        subject: `${studentCount} öğrenci, ${lessonCount} ders`,
+        createdAt: Date.now(),
+      });
+    });
+    this.saveTeachers(teachers);
+    return orphanIds.size;
   }
 
   // ============ UTILITY ============

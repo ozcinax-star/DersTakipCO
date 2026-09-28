@@ -32,36 +32,36 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ teacher, students, g
   const [selectedStudentForCard, setSelectedStudentForCard] = useState<Student | null>(null);
   const [selectedStudentForQR, setSelectedStudentForQR] = useState<Student | null>(null);
   
-  // Form state
-  const [formData, setFormData] = useState({
+  // Get default pricing from settings
+  const defaultPricing = getDefaultPricing();
+
+  // Yeni öğrenci formu için boş değerler (ücret Ayarlar → Genel Varsayılan'dan gelir)
+  const emptyForm = () => ({
     name: '',
     educationLevel: '' as EducationLevel | '',
     gradeLevel: '',
     parentName: '',
     contactNumber: '',
     notes: '',
-    hourlyRate: 500,
-    color: STUDENT_COLORS[0],
+    hourlyRate: getDefaultPricing().defaultRate,
+    color: STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
   });
 
+  // Form state
+  const [formData, setFormData] = useState(emptyForm);
+
   const resetForm = () => {
-    setFormData({
-      name: '',
-      educationLevel: '',
-      gradeLevel: '',
-      parentName: '',
-      contactNumber: '',
-      notes: '',
-      hourlyRate: 500,
-      color: STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
-    });
+    setFormData(emptyForm());
     setEditingStudent(null);
     setShowForm(false);
     setShowTemplateSelector(false);
   };
 
-  // Get default pricing from settings
-  const defaultPricing = getDefaultPricing();
+  const openNewStudentForm = () => {
+    setFormData(emptyForm());
+    setEditingStudent(null);
+    setShowForm(true);
+  };
 
   // Şablon seçildiğinde varsayılan değerleri doldur (ayarlardan gelen ücretleri kullan)
   const applyTemplate = (level: EducationLevel) => {
@@ -82,10 +82,18 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ teacher, students, g
     e.preventDefault();
     if (!formData.name.trim()) return;
 
+    const { educationLevel, ...rest } = formData;
+    const payload: Partial<Student> = {
+      ...rest,
+      name: rest.name.trim(),
+      hourlyRate: Math.max(0, Number(rest.hourlyRate) || 0),
+      educationLevel: educationLevel || undefined,
+    };
+
     if (editingStudent) {
-      dbService.updateStudent(editingStudent.id, formData);
+      dbService.updateStudent(editingStudent.id, payload);
     } else {
-      dbService.createStudent(teacher.id, formData);
+      dbService.createStudent(teacher.id, payload);
     }
     
     resetForm();
@@ -116,9 +124,10 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ teacher, students, g
     }
   };
 
-  const filteredStudents = students.filter(s => 
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.gradeLevel?.toLowerCase().includes(searchQuery.toLowerCase())
+  const normalizedQuery = searchQuery.toLocaleLowerCase('tr-TR');
+  const filteredStudents = students.filter(s =>
+    s.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery) ||
+    s.gradeLevel?.toLocaleLowerCase('tr-TR').includes(normalizedQuery)
   );
 
   return (
@@ -131,14 +140,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ teacher, students, g
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => setShowTemplateSelector(true)}
+            onClick={() => { setFormData(emptyForm()); setEditingStudent(null); setShowTemplateSelector(true); }}
             className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
           >
             <Sparkles className="w-5 h-5 mr-2" />
             Şablondan Ekle
           </button>
           <button
-            onClick={() => setShowForm(true)}
+            onClick={openNewStudentForm}
             className="inline-flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
           >
             <Plus className="w-5 h-5 mr-2" />
@@ -168,7 +177,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ teacher, students, g
           </p>
           {!searchQuery && (
             <button
-              onClick={() => setShowForm(true)}
+              onClick={openNewStudentForm}
               className="mt-4 text-orange-600 hover:text-orange-700 font-medium"
             >
               İlk öğrencinizi ekleyin
@@ -252,7 +261,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ teacher, students, g
               
               <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
                 <span className="text-sm text-slate-500">Ders Ücreti</span>
-                <span className="font-bold text-orange-600">₺{student.hourlyRate}/saat</span>
+                <span className="font-bold text-orange-600">₺{(student.hourlyRate || 0).toLocaleString('tr-TR')}/saat</span>
               </div>
             </div>
           ))}
@@ -442,7 +451,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ teacher, students, g
                   [EducationLevel.ELEMENTARY]: '🎒',
                   [EducationLevel.MIDDLE_SCHOOL]: '📚',
                   [EducationLevel.HIGH_SCHOOL]: '🎓',
-                  [EducationLevel.UNIVERSITY]: 'ðŸ›ï¸',
+                  [EducationLevel.UNIVERSITY]: '🏛️',
                   [EducationLevel.ADULT]: '💼',
                 };
                 const colors: Record<EducationLevel, string> = {
@@ -491,7 +500,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ teacher, students, g
             
             <div className="mt-4 pt-4 border-t border-slate-200">
               <button
-                onClick={() => { setShowTemplateSelector(false); setShowForm(true); }}
+                onClick={() => { setShowTemplateSelector(false); openNewStudentForm(); }}
                 className="w-full py-3 text-slate-600 hover:text-slate-800 font-medium"
               >
                 Şablonsuz devam et →
