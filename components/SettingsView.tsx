@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Teacher, Student, Lesson, Group, BackupData, FullBackupData, EducationLevel } from '../types';
 import { dbService, MigrationInfo, RestoreResult } from '../services/db';
+import { DriveSyncCard } from './DriveSyncCard';
 import { Settings, Download, Upload, Shield, Trash2, AlertTriangle, CheckCircle, Database, HardDrive, DollarSign, Save, History, RefreshCw } from 'lucide-react';
 
 // Varsayılan ücret ayarları için storage key
@@ -517,6 +518,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Google Drive ile bilgisayarlar arası aktarım (isteğe bağlı) */}
+      <DriveSyncCard onRestore={onRestoreBackup} />
 
       {/* Eski uygulamadan aktarım */}
       {onImportFromOldApp && (

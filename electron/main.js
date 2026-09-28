@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron')
 const fs = require('fs');
 const path = require('path');
 const { scanOldAppData } = require('./migration');
+const drive = require('./googleDrive');
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -140,6 +141,25 @@ ipcMain.handle('backup:auto', async (_event, json) => {
   }
   return true;
 });
+
+// Drive'dan çekmeden önce mevcut verinin kopyası (otomatik yedek dönüşümüne girmez)
+ipcMain.handle('backup:snapshot', async (_event, json, label) => {
+  if (typeof json !== 'string' || json.length === 0) return null;
+  fs.mkdirSync(AUTO_BACKUP_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const safeLabel = String(label || 'onceki-veriler').replace(/[^a-z0-9-]/gi, '');
+  const filePath = path.join(AUTO_BACKUP_DIR, `${safeLabel}-${stamp}.json`);
+  fs.writeFileSync(filePath, json, 'utf-8');
+  return filePath;
+});
+
+ipcMain.handle('drive:status', () => drive.status());
+ipcMain.handle('drive:connect', () => drive.connect());
+ipcMain.handle('drive:cancel', () => drive.cancelConnect());
+ipcMain.handle('drive:disconnect', () => drive.disconnect());
+ipcMain.handle('drive:upload', (_event, json) => drive.upload(json));
+ipcMain.handle('drive:download', () => drive.download());
+ipcMain.handle('drive:markDownloaded', (_event, summary) => drive.markDownloaded(summary));
 
 ipcMain.handle('backup:save', async (_event, json, suggestedName) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {

@@ -8,6 +8,7 @@
 - Raporlar ve finans grafikleri
 - Birden fazla öğretmen profili (Kurum Yönetimi)
 - Yedekleme ve geri yükleme, günlük otomatik yedek
+- İsteğe bağlı Google Drive ile bilgisayarlar arası veri aktarımı ([kurulum](docs/GOOGLE_DRIVE_KURULUM.md))
 
 Tüm veriler yalnızca kullanıcının bilgisayarında saklanır, hiçbir sunucuya gönderilmez.
 
@@ -41,6 +42,9 @@ npm run dist           # release/ altına kurulum (.exe) ve taşınabilir sürü
 | `services/db.ts` | localStorage veri katmanı, yedekleme, eski sürümden aktarım |
 | `electron/main.js` | Pencere, menü, yedek kaydetme ve otomatik yedek |
 | `electron/migration.js` | Eski Mağaza sürümünün verisini bulup okuma |
+| `electron/googleDrive.js` | Google Drive girişi (OAuth + PKCE), yükleme ve çekme |
+| `services/driveSync.ts`, `components/DriveSyncCard.tsx` | Drive aktarımı arayüzü |
+| `tests/mock-google.js` | Testler için sahte Google OAuth/Drive sunucusu |
 | `electron/preload.js` | Arayüz ile ana süreç arasındaki güvenli köprü |
 
 ## Veri formatı

@@ -4,3 +4,6 @@ release/
 _kurtarilan/
 *.log
 .DS_Store
+
+# Google OAuth istemci bilgileri (bkz. docs/GOOGLE_DRIVE_KURULUM.md)
+electron/google-oauth.json
