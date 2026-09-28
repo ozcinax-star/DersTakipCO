@@ -5,9 +5,12 @@ const { scanOldAppData } = require('./migration');
 
 const isDev = process.env.NODE_ENV === 'development';
 
-// Mağaza sürümü %APPDATA%\DersTakipCO klasörünü kullanıyordu. Aynı klasörü
-// paylaşmamak için yeni sürüm kendi klasöründe çalışır.
-app.setPath('userData', path.join(app.getPath('appData'), 'DersTakipCO-Masaustu'));
+// Mağaza sürümü %APPDATA%\DersTakipCO klasörünü kullanıyordu. Bağımsız (.exe)
+// sürüm aynı klasörü paylaşmamak için kendi klasöründe çalışır. Bu kod ileride
+// Mağaza paketi olarak yayınlanırsa mevcut Mağaza verisini kullanmaya devam eder.
+if (!process.windowsStore) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'DersTakipCO-Masaustu'));
+}
 
 const MIGRATION_TEMP = path.join(app.getPath('temp'), 'DersTakipCO-aktarim');
 const AUTO_BACKUP_DIR = path.join(app.getPath('documents'), 'DersTakipCO Yedekler');
